@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 import os
 import random
 import numpy as np
@@ -17,8 +19,6 @@ from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_mode
 from .util import setup, cleanup, to_one_hot, batch_intersectionAndUnionGPU, find_free_port
 from tqdm import tqdm
 from .test import validate_transformer
-from typing import Dict
-from torch import Tensor
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -39,27 +39,26 @@ def parse_args() -> argparse.Namespace:
     return cfg
 
 
-def main_worker(rank: int, world_size: int, args: argparse.Namespace) -> None:
-    print(f"==> Running process rank {rank}.")
-    setup(args, rank, world_size)
+def main(args: argparse.Namespace) -> None:
     print(args)
 
     if args.manual_seed is not None:
-        cudnn.benchmark = False
+        cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
         cudnn.deterministic = True
-        torch.cuda.manual_seed(args.manual_seed + rank)
-        np.random.seed(args.manual_seed + rank)
-        torch.manual_seed(args.manual_seed + rank)
-        torch.cuda.manual_seed_all(args.manual_seed + rank)
-        random.seed(args.manual_seed + rank)
+        random.seed(args.manual_seed)
+        np.random.seed(args.manual_seed)
+        torch.manual_seed(args.manual_seed)
+        torch.cuda.manual_seed(args.manual_seed)
+        torch.cuda.manual_seed_all(args.manual_seed)
 
     # ====== Model + Optimizer ======
-    model = get_model(args).to(rank)
+    model = get_model(args)
 
     if args.resume_weights:
-        if os.path.isfile(args.resume_weights):
+        fname = args.resume_weights + args.train_name + '/' + \
+                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
+        if os.path.isfile(fname):
             print("=> loading weight '{}'".format(args.resume_weights))
-
             pre_weight = torch.load(args.resume_weights)['state_dict']
 
             pre_dict = model.state_dict()
@@ -94,22 +93,13 @@ def main_worker(rank: int, world_size: int, args: argparse.Namespace) -> None:
         for param in model.bottleneck.parameters():
             param.requires_grad = False
 
-    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model = DDP(model, device_ids=[rank])
-
     # ====== Transformer ======
     trans_dim = args.bottleneck_dim
 
-    transformer = MultiHeadAttentionOne(
-        args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5
-    ).to(rank)
+    transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5)
 
-    optimizer_transformer = get_optimizer(
-        args,
-        [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)]
-    )
-    transformer = nn.SyncBatchNorm.convert_sync_batchnorm(transformer)
-    transformer = DDP(transformer, device_ids=[rank])
+    optimizer_transformer = get_optimizer(args,
+                                          [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
 
     trans_save_dir = get_model_dir_trans(args)
 
@@ -128,8 +118,6 @@ def main_worker(rank: int, world_size: int, args: argparse.Namespace) -> None:
 
     # ====== Training  ======
     for epoch in range(args.epochs):
-        if args.distributed:
-            train_sampler.set_epoch(epoch)
 
         _, _ = do_epoch(
             args=args,
@@ -149,63 +137,40 @@ def main_worker(rank: int, world_size: int, args: argparse.Namespace) -> None:
             transformer=transformer
         )
 
-        if args.distributed:
-            dist.all_reduce(val_Iou), dist.all_reduce(val_loss)
-            val_Iou /= world_size
-            val_loss /= world_size
+        # Model selection
+        if val_Iou.item() > max_val_mIoU:
+            max_val_mIoU = val_Iou.item()
 
-        if main_process(args):
-            # Model selection
-            if val_Iou.item() > max_val_mIoU:
-                max_val_mIoU = val_Iou.item()
+            os.makedirs(trans_save_dir, exist_ok=True)
+            filename_transformer = os.path.join(trans_save_dir, f'best.pth')
 
-                os.makedirs(trans_save_dir, exist_ok=True)
-                filename_transformer = os.path.join(trans_save_dir, f'best.pth')
+            if args.save_models:
+                print('Saving checkpoint to: ' + filename_transformer)
 
-                if args.save_models:
-                    print('Saving checkpoint to: ' + filename_transformer)
+                torch.save(
+                    {'epoch': epoch,
+                     'state_dict': transformer.state_dict(),
+                     'optimizer': optimizer_transformer.state_dict()},
+                    filename_transformer
+                )
 
-                    torch.save(
-                        {
-                            'epoch': epoch,
-                            'state_dict': transformer.state_dict(),
-                            'optimizer': optimizer_transformer.state_dict()
-                        },
-                        filename_transformer
-                    )
+        print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
-            print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
-
-    if args.save_models and main_process(args):
+    if args.save_models:  # 所有跑完，存last epoch
         filename_transformer = os.path.join(trans_save_dir, 'final.pth')
         torch.save(
-            {
-                'epoch': args.epochs,
-                'state_dict': transformer.state_dict(),
-                'optimizer': optimizer_transformer.state_dict()
-             },
+            {'epoch': args.epochs,
+             'state_dict': transformer.state_dict(),
+             'optimizer': optimizer_transformer.state_dict()},
             filename_transformer
         )
-
-    cleanup()
-
-
-def main_process(args: argparse.Namespace) -> bool:
-    if args.distributed:
-        rank = dist.get_rank()
-        if rank == 0:
-            return True
-        else:
-            return False
-    else:
-        return True
 
 
 def do_epoch(
         args: argparse.Namespace,
         train_loader: torch.utils.data.DataLoader,
-        model: DDP,
-        transformer: DDP,
+        model: nn.Module,
+        transformer: nn.Module,
         optimizer_trans: torch.optim.Optimizer,
         epoch: int,
         iter_per_epoch: int,
@@ -213,8 +178,8 @@ def do_epoch(
 ) -> Tuple[torch.tensor, torch.tensor]:
 
     loss_meter = AverageMeter()
-    train_losses = torch.zeros(log_iter).to(dist.get_rank())
-    train_Ious = torch.zeros(log_iter).to(dist.get_rank())
+    train_losses = torch.zeros(log_iter)
+    train_Ious = torch.zeros(log_iter)
 
     iterable_train_loader = iter(train_loader)
 
@@ -224,43 +189,37 @@ def do_epoch(
     for i in range(iter_per_epoch):
         qry_img, q_label, spprt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()
 
-        spprt_imgs = spprt_imgs.to(dist.get_rank(), non_blocking=True)
-        s_label = s_label.to(dist.get_rank(), non_blocking=True)
-        q_label = q_label.to(dist.get_rank(), non_blocking=True)
-        qry_img = qry_img.to(dist.get_rank(), non_blocking=True)
+        if torch.cuda.is_available():
+            spprt_imgs = spprt_imgs.cuda()  # [1, 1, 3, h, w]
+            s_label = s_label.cuda()        # [1, 1, h, w]
+            q_label = q_label.cuda()        # [1, h, w]
+            qry_img = qry_img.cuda()        # [1, 3, h, w]
 
         # ====== Phase 1: Train the binary classifier on support samples ======
 
-        # Keep the batch size as 1.
+        # Keep the batch size/episode as 1.
         if spprt_imgs.shape[1] == 1:
-            spprt_imgs_reshape = spprt_imgs.squeeze(0).expand(
-                2, 3, args.image_size, args.image_size
-            )
-            s_label_reshape = s_label.squeeze(0).expand(
-                2, args.image_size, args.image_size
-            ).long()
+            spprt_imgs_reshape = spprt_imgs.squeeze(0).expand(2, 3, args.image_size, args.image_size)                   # one shot 情况为什么要变为两个
+            s_label_reshape = s_label.squeeze(0).expand(2, args.image_size, args.image_size).long()
         else:
             spprt_imgs_reshape = spprt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
             s_label_reshape = s_label.squeeze(0).long() # [n_shots, img_size, img_size]
 
-        binary_cls = nn.Conv2d(
-            args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False
-        ).cuda()
+        binary_cls = nn.Conv2d(args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False).cuda()  # classifier
 
         optimizer = optim.SGD(binary_cls.parameters(), lr=args.cls_lr)
 
-        # Dynamic class weights
+        # Define loss function with Dynamic class weights
         s_label_arr = s_label.cpu().numpy().copy()  # [n_task, n_shots, img_size, img_size]
         back_pix = np.where(s_label_arr == 0)
         target_pix = np.where(s_label_arr == 1)
 
         criterion = nn.CrossEntropyLoss(
             weight=torch.tensor([1.0, len(back_pix[0]) / len(target_pix[0])]).cuda(),
-            ignore_index=255
-        )
+            ignore_index=255)
 
         with torch.no_grad():
-            f_s = model.module.extract_features(spprt_imgs_reshape)  # [n_task, c, h, w]
+            f_s = model.extract_features(spprt_imgs_reshape)  # [n_support, c, h, w]
 
         for index in range(args.adapt_iter):
             output_support = binary_cls(f_s)
@@ -283,34 +242,29 @@ def do_epoch(
 
         criterion = nn.CrossEntropyLoss(
             weight=torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]).cuda(),
-            ignore_index=255
-        )
+            ignore_index=255)
 
         model.eval()
         with torch.no_grad():
-            f_q = model.module.extract_features(qry_img)  # [n_task, c, h, w]
-            f_q = F.normalize(f_q, dim=1)
+            f_q = model.extract_features(qry_img)  # [1, c, h, w]
+            f_q = F.normalize(f_q, dim=1)          # [1, c, 60, 60]
 
         # Weights of the classifier.
-        weights_cls = binary_cls.weight.data
+        weights_cls = binary_cls.weight.data       # [2, 512, 1, 1]
 
         weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(
             args.batch_size, 2, weights_cls.shape[1]
-        )  # [n_task, 2, c]
+        )  # [B, 2, c]
 
         # Update the classifier's weights with transformer
-        updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [n_task, 2, c]
+        updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [n_task, 2, c] [1, 2, 512]
 
         f_q_reshape = f_q.view(args.batch_size, args.bottleneck_dim, -1)  # [n_task, c, hw]
 
         pred_q = torch.matmul(updated_weights_cls, f_q_reshape).view(
-            args.batch_size, 2, f_q.shape[-2], f_q.shape[-1]
-        )  # # [n_task, 2, h, w]
+            args.batch_size, 2, f_q.shape[-2], f_q.shape[-1])             # [n_task, 2, h, w]
 
-        pred_q = F.interpolate(
-            pred_q, size=q_label.shape[1:],
-            mode='bilinear', align_corners=True
-        )
+        pred_q = F.interpolate(pred_q, size=q_label.shape[1:],mode='bilinear', align_corners=True)
 
         loss_q = criterion(pred_q, q_label.long())
 
@@ -319,22 +273,13 @@ def do_epoch(
         optimizer_trans.step()
 
         # Print loss and mIoU
-        intersection, union, target = intersectionAndUnionGPU(
-            pred_q.argmax(1), q_label, args.num_classes_tr, 255
-        )
-
-        if args.distributed:
-            dist.all_reduce(loss_q)
-            dist.all_reduce(intersection)
-            dist.all_reduce(union)
-            dist.all_reduce(target)
+        intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
 
         mIoU = (intersection / (union + 1e-10)).mean()
-        loss_meter.update(loss_q.item() / dist.get_world_size())
+        loss_meter.update(loss_q.item() / args.batch_size)
 
-        if main_process(args):
-            train_losses[i] = loss_meter.avg
-            train_Ious[i] = mIoU
+        train_losses[i] = loss_meter.avg
+        train_Ious[i] = mIoU
 
     print('Epoch {}: The mIoU {:.2f}, loss {:.2f}'.format(
         epoch + 1, train_Ious.mean(), train_losses.mean()
@@ -353,8 +298,4 @@ if __name__ == "__main__":
         args.n_runs = 2
         args.save_models = False
 
-    world_size = len(args.gpus)
-    distributed = world_size > 1
-    args.distributed = distributed
-    args.port = find_free_port()
-    mp.spawn(main_worker, args=(world_size, args), nprocs=world_size, join=True)
+    main(args)

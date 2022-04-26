@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 from multiprocessing import Pool
 from collections import defaultdict
 from functools import partial
@@ -59,6 +61,7 @@ def make_dataset(
             class_file_dict[k] += v
 
     return image_label_list, class_file_dict
+    # image_label_list：list of 所有包含的图片, class_file_dict：cls_id->相应图片list
 
 
 def process_image(
@@ -77,11 +80,11 @@ def process_image(
     '''
     line = line.strip()
     line_split = line.split(' ')
-    image_name = os.path.join(data_root, line_split[0])
-    label_name = os.path.join(data_root, line_split[1])
+    image_name = os.path.join(data_root, line_split[0])   # image_file
+    label_name = os.path.join(data_root, line_split[1])   # label_file
     item: Tuple[str, str] = (image_name, label_name)
     label = cv2.imread(label_name, cv2.IMREAD_GRAYSCALE)
-    label_class = np.unique(label).tolist()
+    label_class = np.unique(label).tolist()                # 当前图片的所有 category
 
     if 0 in label_class:
         label_class.remove(0)
@@ -91,7 +94,7 @@ def process_image(
         assert label_class_ in list(range(1, 81)), label_class_
 
     c: int
-    new_label_class = []
+    new_label_class = []                                # 选取符合条件, 在meta train中的label
     for c in label_class:
         if c in class_list:
             tmp_label = np.zeros_like(label)
@@ -113,3 +116,4 @@ def process_image(
             class_file_dict[c].append(item)
 
     return image_label_list, class_file_dict
+    # image_label_list：list of 所有包含的图片, class_file_dict：cls_id->相应图片list: 只针对当前这张图片！

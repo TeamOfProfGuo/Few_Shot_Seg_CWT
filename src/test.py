@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 import os
 import random
 import numpy as np
@@ -37,32 +39,22 @@ def parse_args() -> None:
     return cfg
 
 
-def main_worker(rank: int, world_size: int, args: argparse.Namespace) -> None:
-
-    print(f"==> Running DDP checkpoint example on rank {rank}.")
-    setup(args, rank, world_size)
+def main_worker(args: argparse.Namespace) -> None:
 
     if args.manual_seed is not None:
         cudnn.benchmark = False
         cudnn.deterministic = True
-        torch.cuda.manual_seed(args.manual_seed + rank)
-        np.random.seed(args.manual_seed + rank)
-        torch.manual_seed(args.manual_seed + rank)
-        torch.cuda.manual_seed_all(args.manual_seed + rank)
-        random.seed(args.manual_seed + rank)
+        torch.cuda.manual_seed(args.manual_seed)
+        np.random.seed(args.manual_seed)
+        torch.manual_seed(args.manual_seed)
+        torch.cuda.manual_seed_all(args.manual_seed)
+        random.seed(args.manual_seed)
 
     # ====== Model  ======
-    model = get_model(args).to(rank)
-    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model = DDP(model, device_ids=[rank])
+    model = get_model(args)
 
     trans_dim = args.bottleneck_dim
-    transformer = MultiHeadAttentionOne(
-        args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5
-    ).to(rank)
-
-    transformer = nn.SyncBatchNorm.convert_sync_batchnorm(transformer)
-    transformer = DDP(transformer, device_ids=[rank])
+    transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5)
     
     root_trans = get_model_dir_trans(args)
 
@@ -107,13 +99,6 @@ def main_worker(rank: int, world_size: int, args: argparse.Namespace) -> None:
         model=model, transformer=transformer
     )
 
-    if args.distributed:
-        dist.all_reduce(val_Iou), dist.all_reduce(val_loss)
-        val_Iou /= world_size
-        val_loss /= world_size
-
-    cleanup()
-
 
 def validate_transformer(
         args: argparse.Namespace,
@@ -130,15 +115,12 @@ def validate_transformer(
 
     # ====== Metrics initialization  ======
     H, W = args.image_size, args.image_size
-    c = model.module.bottleneck_dim
     if args.image_size == 473:
-        h = 60
-        w = 60
+        h, w = 60, 60
     else:
-        h = model.module.feature_res[0]
-        w = model.module.feature_res[1]
+        h, w = model.feature_res  # (53, 53)
 
-    runtimes = torch.zeros(args.n_runs)
+    runtimes = torch.zeros(args.n_runs)  # args.n_runs=1
     val_IoUs = np.zeros(args.n_runs)
     val_losses = np.zeros(args.n_runs)
 
@@ -147,18 +129,15 @@ def validate_transformer(
 
         # ====== Initialize the metric dictionaries ======
         loss_meter = AverageMeter()
-        iter_num = 0
+        iter_num, runtime = 0, 0
         cls_intersection = defaultdict(int)  # Default value is 0
         cls_union = defaultdict(int)
         IoU = defaultdict(int)
-        runtime = 0
 
         for e in range(nb_episodes):
             t0 = time.time()
-            logits_q = torch.zeros(args.batch_size_val, 1, args.num_classes_tr, h, w).to(dist.get_rank())
-            gt_q = 255 * torch.ones(
-                args.batch_size_val, 1, args.image_size,args.image_size
-            ).long().to(dist.get_rank())
+            logits_q = torch.zeros(args.batch_size_val, 1, args.num_classes_tr, h, w)
+            gt_q = 255 * torch.ones(args.batch_size_val, 1, args.image_size,args.image_size).long()
             classes = []  # All classes considered in the tasks
 
             # ====== Process each task separately ======
@@ -172,16 +151,14 @@ def validate_transformer(
                     qry_img, q_label, spprt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
                 iter_num += 1
 
-                spprt_imgs = spprt_imgs.to(dist.get_rank(), non_blocking=True)
-                s_label = s_label.to(dist.get_rank(), non_blocking=True)
-
-                q_label = q_label.to(dist.get_rank(), non_blocking=True)
-                qry_img = qry_img.to(dist.get_rank(), non_blocking=True)
+                if torch.cuda.is_available():
+                    spprt_imgs = spprt_imgs.cuda()
+                    s_label = s_label.cuda()
+                    q_label = q_label.cuda()
+                    qry_img = qry_img.cuda()
 
                 # ====== Phase 1: Train a new binary classifier on support samples. ======
-                binary_classifier = nn.Conv2d(
-                    args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False
-                ).cuda()
+                binary_classifier = nn.Conv2d(args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False).cuda()
 
                 optimizer = optim.SGD(binary_classifier.parameters(), lr=args.cls_lr)
 
@@ -192,18 +169,15 @@ def validate_transformer(
 
                 criterion = nn.CrossEntropyLoss(
                     weight=torch.tensor([1.0, len(back_pix[0]) / len(target_pix[0])]).cuda(),
-                    ignore_index=255
-                )
+                    ignore_index=255)
 
                 with torch.no_grad():
-                    f_s = model.module.extract_features(spprt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
+                    f_s = model.extract_features(spprt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
 
                 for index in range(args.adapt_iter):
                     output_support = binary_classifier(f_s)
-                    output_support = F.interpolate(
-                        output_support, size=s_label.size()[2:],
-                        mode='bilinear', align_corners=True
-                    )
+                    output_support = F.interpolate(output_support, size=s_label.size()[2:],
+                                                   mode='bilinear', align_corners=True)
                     s_loss = criterion(output_support, s_label.squeeze(0))
                     optimizer.zero_grad()
                     s_loss.backward()
@@ -211,45 +185,29 @@ def validate_transformer(
 
                 # ====== Phase 2: Update classifier's weights with old weights and query features. ======
                 with torch.no_grad():
-                    f_q = model.module.extract_features(qry_img)  # [n_task, c, h, w]
+                    f_q = model.extract_features(qry_img)  # [n_task, c, h, w]
                     f_q = F.normalize(f_q, dim=1)
 
                     weights_cls = binary_classifier.weight.data  # [2, c, 1, 1]
-
-                    weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(
-                        f_q.shape[0], 2, 512
-                    )  # [1, 2, c]
-
+                    weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(f_q.shape[0], 2, 512)  # [1, 2, c]
                     updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [1, 2, c]
 
                     # Build a temporary new classifier for prediction
-                    Pseudo_cls = nn.Conv2d(
-                        args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False
-                    ).cuda()
-
+                    Pseudo_cls = nn.Conv2d(args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False).cuda()
                     # Initialize the weights with updated ones
-                    Pseudo_cls.weight.data = torch.as_tensor(
-                        updated_weights_cls.squeeze(0).unsqueeze(2).unsqueeze(3)
-                    )
+                    Pseudo_cls.weight.data = torch.as_tensor(updated_weights_cls.squeeze(0).unsqueeze(2).unsqueeze(3))
 
-                    pred_q = Pseudo_cls(f_q)
+                    pred_q = Pseudo_cls(f_q)   # [1, 2, 60, 60] 没有expand到2个
 
-                logits_q[i] = pred_q.detach()
-                gt_q[i, 0] = q_label
+                logits_q[i] = pred_q.detach()  # [1 batch_size, 2 channel, 60, 60] 其实一个batch只有一个obs, i=0
+                gt_q[i, 0] = q_label           # [1 batch_size, 1 channel, 473, 473]
                 classes.append([class_.item() for class_ in subcls])
 
             t1 = time.time()
             runtime += t1 - t0
 
-            logits = F.interpolate(
-                logits_q.squeeze(1), size=(H, W),
-                mode='bilinear', align_corners=True
-            ).detach()
-
-            intersection, union, _ = batch_intersectionAndUnionGPU(
-                logits.unsqueeze(1), gt_q, 2
-            )
-
+            logits = F.interpolate(logits_q.squeeze(1), size=(H, W),mode='bilinear', align_corners=True).detach()
+            intersection, union, _ = batch_intersectionAndUnionGPU(logits.unsqueeze(1), gt_q, 2)
             intersection, union = intersection.cpu(), union.cpu()
 
             # ====== Log metrics ======
@@ -262,15 +220,12 @@ def validate_transformer(
                     cls_union[class_] += union[i, 0, j + 1]
 
             for class_ in cls_union:
-                IoU[class_] = cls_intersection[class_] / (cls_union[class_] + 1e-10)
+                IoU[class_] = cls_intersection[class_] / (cls_union[class_] + 1e-10)   # cls wise IoU
 
             if (iter_num % 200 == 0):
-                mIoU = np.mean([IoU[i] for i in IoU])
-                print('Test: [{}/{}] '
-                      'mIoU {:.4f} '
-                      'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                    iter_num, args.test_num, mIoU, loss_meter=loss_meter
-                ))
+                mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
+                print('Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                    iter_num, args.test_num, mIoU, loss_meter=loss_meter))
 
         runtimes[run] = runtime
         mIoU = np.mean(list(IoU.values()))
@@ -295,8 +250,4 @@ if __name__ == "__main__":
         args.test_num = 500
         args.n_runs = 2
 
-    world_size = len(args.gpus)
-    distributed = world_size > 1
-    args.distributed = distributed
-    args.port = find_free_port()
-    mp.spawn(main_worker, args=(world_size, args), nprocs=world_size, join=True)
+    main_worker(args)

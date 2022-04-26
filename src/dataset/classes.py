@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 from collections import defaultdict
 import argparse
 from typing import Dict, List, Any
@@ -129,7 +131,7 @@ def get_split_classes(args: argparse.Namespace) -> Dict[str, Any]:
     # =============== COCO ===================
     name = 'coco'
     class_list = list(range(1, 81))
-    split_classes[name][-1]['val'] = class_list
+    split_classes[name][-1]['val'] = class_list    # key: coco -> -1 -> val  "split -1 包含所有的class"
     if args.use_split_coco:
         vals_lists = [list(range(1, 78, 4)), list(range(2, 79, 4)),
                       list(range(3, 80, 4)), list(range(4, 81, 4))]
@@ -141,7 +143,7 @@ def get_split_classes(args: argparse.Namespace) -> Dict[str, Any]:
 
     else:
         class_list = list(range(1, 81))
-        vals_lists = [list(range(1, 21)), list(range(21, 41)),
+        vals_lists = [list(range(1, 21)), list(range(21, 41)),         # 共80个class,4个split.
                       list(range(41, 61)), list(range(61, 81))]
         for i, val_list in enumerate(vals_lists):
             split_classes[name][i]['val'] = val_list
@@ -181,8 +183,8 @@ def filter_classes(train_name: str,
     print(f'INFO: {train_name} -> {test_name}')
     print(f'INFO: {train_split} -> {test_split}')
     print(">> Start Filtering classes ")
-    seen_classes = [classId2className[train_name][c] for c in split_classes[train_name][train_split]['train']]
-    initial_classes = split_classes[test_name][test_split]['val']
+    seen_classes = [classId2className[train_name][c] for c in split_classes[train_name][train_split]['train']]  # 所有meta train cls name
+    initial_classes = split_classes[test_name][test_split]['val']  # meta_test数据 cls id
     kept_classes_id = []
     removed_classes = []
     kept_classes_name = []

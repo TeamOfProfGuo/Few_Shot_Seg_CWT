@@ -1,0 +1,9 @@
+*.out
+*.pth
+*.pyc
+*.txt
+*.log
+save/
+pic/
+models/__pychache__/
+.idea/**

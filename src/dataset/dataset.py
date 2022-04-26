@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 import cv2
 import numpy as np
 import src.dataset.transform as transform
@@ -36,15 +38,16 @@ def get_train_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
     train_transform += [transform.ToTensor(), transform.Normalize(mean=args.mean, std=args.std)]
     train_transform = transform.Compose(train_transform)
 
-    split_classes = get_split_classes(args)
-    class_list = split_classes[args.train_name][args.train_split]['train']
+    split_classes = get_split_classes(args)     # 只用了 args.use_split_coco 这个参数， 返回coco和pascal所有4个split, dict of dict
+    class_list = split_classes[args.train_name][args.train_split]['train']   # list of all meta train class labels
 
     # ====== Build loader ======
     train_data = EpisodicData(
         mode_train=True, transform=train_transform, class_list=class_list, args=args
     )
 
-    world_size = torch.distributed.get_world_size()
+    if args.distributed:
+        world_size = torch.distributed.get_world_size()
     train_sampler = DistributedSampler(train_data) if args.distributed else None
     batch_size = int(args.batch_size / world_size) if args.distributed else args.batch_size
 
@@ -71,21 +74,19 @@ def get_val_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
             transform.Normalize(mean=args.mean, std=args.std)
     ])
     val_sampler = None
-    split_classes = get_split_classes(args)
+    split_classes = get_split_classes(args)     # 返回coco和pascal所有4个split, dict of dict
 
     # ====== Filter out classes seen during training ======
     if args.test_name == 'default':
-        test_name = args.train_name
-        test_split = args.train_split
+        test_name = args.train_name    # 'pascal'
+        test_split = args.train_split  # split 0
     else:
         test_name = args.test_name
         test_split = args.test_split
-    class_list = filter_classes(args.train_name, args.train_split, test_name, test_split, split_classes)
+    class_list = filter_classes(args.train_name, args.train_split, test_name, test_split, split_classes)  # 只有cross domain时才有用
 
     # ====== Build loader ======
-    val_data = EpisodicData(
-        mode_train=False, transform=val_transform, class_list=class_list, args=args
-    )
+    val_data = EpisodicData(mode_train=False, transform=val_transform, class_list=class_list, args=args)
 
     val_loader = torch.utils.data.DataLoader(
         val_data,
@@ -110,7 +111,7 @@ class EpisodicData(Dataset):
         self.random_shot = args.random_shot
         self.data_root = args.data_root
         self.class_list = class_list
-        if mode_train:
+        if mode_train:    # args.train_list： txt file 存储 pascal 中所有train_split的file
             self.data_list, self.sub_class_file_list = make_dataset(args.data_root, args.train_list, self.class_list)
         else:
             self.data_list, self.sub_class_file_list = make_dataset(args.data_root, args.val_list, self.class_list)
@@ -151,7 +152,7 @@ class EpisodicData(Dataset):
         new_label[target_pix] = 1
         label = new_label
 
-        file_class_chosen = self.sub_class_file_list[class_chosen]
+        file_class_chosen = self.sub_class_file_list[class_chosen]     # 选取的class, 所对应的image/label path
         num_file = len(file_class_chosen)
 
         # ====== Build support ======
@@ -169,7 +170,7 @@ class EpisodicData(Dataset):
             support_idx = random.randint(1, num_file) - 1
             support_image_path = image_path
             support_label_path = label_path
-            while((support_image_path == image_path and support_label_path == label_path)
+            while((support_image_path == image_path and support_label_path == label_path)   # 排除 query img
                   or support_idx in support_idx_list):
                 support_idx = random.randint(1, num_file) - 1
                 support_image_path, support_label_path = file_class_chosen[support_idx]
@@ -207,10 +208,10 @@ class EpisodicData(Dataset):
         support_images = support_image_list.copy()
         support_labels = support_label_list.copy()
 
-        # Forward images through transforms
+        # ============== Forward images through transforms
         if self.transform is not None:
-            qry_img, target = self.transform(image, label)
-            for k in range(shot):
+            qry_img, target = self.transform(image, label)    # transform query img
+            for k in range(shot):                             # transform support img
                 support_image_list[k], support_label_list[k] = self.transform(support_image_list[k], support_label_list[k])
                 support_image_list[k] = support_image_list[k].unsqueeze(0)
                 support_label_list[k] = support_label_list[k].unsqueeze(0)
@@ -221,4 +222,6 @@ class EpisodicData(Dataset):
 
         return qry_img, target, spprt_imgs, spprt_labels, subcls_list, \
                [support_image_path_list, support_labels], [image_path, label]
+
+        # subcls_list  返回的是 选取的class在所有meta train cls list 中的index+1/rank
 
