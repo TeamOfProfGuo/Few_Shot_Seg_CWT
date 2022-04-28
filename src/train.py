@@ -58,8 +58,8 @@ def main(args: argparse.Namespace) -> None:
         fname = args.resume_weights + args.train_name + '/' + \
                 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
-            print("=> loading weight '{}'".format(args.resume_weights))
-            pre_weight = torch.load(args.resume_weights)['state_dict']
+            print("=> loading weight '{}'".format(fname))
+            pre_weight = torch.load(fname)['state_dict']
 
             pre_dict = model.state_dict()
             for index, (key1, key2) in enumerate(zip(pre_dict.keys(), pre_weight.keys())):
@@ -73,9 +73,9 @@ def main(args: argparse.Namespace) -> None:
 
             model.load_state_dict(pre_dict, strict=True)
 
-            print("=> loaded weight '{}'".format(args.resume_weights))
+            print("=> loaded weight '{}'".format(fname))
         else:
-            print("=> no weight found at '{}'".format(args.resume_weights))
+            print("=> no weight found at '{}'".format(fname))
 
         # Fix the backbone layers
         for param in model.layer0.parameters():
