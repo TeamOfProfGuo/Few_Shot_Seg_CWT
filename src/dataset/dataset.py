@@ -46,21 +46,21 @@ def get_train_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
         mode_train=True, transform=train_transform, class_list=class_list, args=args
     )
 
-    if args.distributed:
-        world_size = torch.distributed.get_world_size()
-    train_sampler = DistributedSampler(train_data) if args.distributed else None
-    batch_size = int(args.batch_size / world_size) if args.distributed else args.batch_size
+    # if args.distributed:
+    #     world_size = torch.distributed.get_world_size()
+    # train_sampler = DistributedSampler(train_data) if args.distributed else None
+    # batch_size = int(args.batch_size / world_size) if args.distributed else args.batch_size
 
     train_loader = torch.utils.data.DataLoader(
         train_data,
-        batch_size=batch_size,
-        shuffle=(train_sampler is None),
+        batch_size=args.batch_size,
+        shuffle=True,
         num_workers=args.workers,
         pin_memory=True,
-        sampler=train_sampler,
+        sampler=None,
         drop_last=True
     )
-    return train_loader, train_sampler
+    return train_loader, None
 
 
 def get_val_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
