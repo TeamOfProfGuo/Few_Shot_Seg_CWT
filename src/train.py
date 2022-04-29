@@ -97,7 +97,7 @@ def main(args: argparse.Namespace) -> None:
     # ====== Transformer ======
     trans_dim = args.bottleneck_dim
 
-    transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5)
+    transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5).cuda()
 
     optimizer_transformer = get_optimizer(args,
                                           [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
