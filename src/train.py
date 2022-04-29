@@ -53,6 +53,8 @@ def main(args: argparse.Namespace) -> None:
 
     # ====== Model + Optimizer ======
     model = get_model(args)
+    device = torch.device("cuda:0" if args.cuda else "cpu")
+    model = model.to(device)
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
