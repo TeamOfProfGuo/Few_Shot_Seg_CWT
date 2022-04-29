@@ -186,9 +186,9 @@ def intersectionAndUnionGPU(
     target = target.view(-1)
     preds[target == ignore_index] = ignore_index
     intersection = preds[preds == target]
-    area_intersection = torch.histc(intersection, bins=num_classes, min=0, max=num_classes-1)
-    area_output = torch.histc(preds, bins=num_classes, min=0, max=num_classes-1)
-    area_target = torch.histc(target, bins=num_classes, min=0, max=num_classes-1)
+    area_intersection = torch.histc(intersection.float(), bins=num_classes, min=0, max=num_classes-1)
+    area_output = torch.histc(preds.float(), bins=num_classes, min=0, max=num_classes-1)
+    area_target = torch.histc(target.float(), bins=num_classes, min=0, max=num_classes-1)
     area_union = area_output + area_target - area_intersection
     # print(torch.unique(intersection))
     return area_intersection, area_union, area_target

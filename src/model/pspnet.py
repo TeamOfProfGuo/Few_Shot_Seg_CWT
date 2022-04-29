@@ -73,6 +73,7 @@ class PSPNet(nn.Module):
         self.use_ppm = use_ppm
         self.m_scale = args.m_scale
         self.bottleneck_dim = args.bottleneck_dim
+        self.rmid = args.get('rmid', False)     # 是否返回中间层
 
         if args.arch == 'resnet':
             if args.layers == 50:
@@ -80,15 +81,13 @@ class PSPNet(nn.Module):
             else:
                 resnet = resnet101(pretrained=args.pretrained)
             self.layer0 = nn.Sequential(
-                resnet.conv1, resnet.bn1,
-                resnet.relu, resnet.conv2,
-                resnet.bn2, resnet.relu,
-                resnet.conv3, resnet.bn3,
-                resnet.relu, resnet.maxpool
-            )
+                resnet.conv1, resnet.bn1, resnet.relu,
+                resnet.conv2, resnet.bn2, resnet.relu,
+                resnet.conv3, resnet.bn3, resnet.relu, resnet.maxpool)
 
             self.layer1, self.layer2, self.layer3, self.layer4 = resnet.layer1, resnet.layer2, resnet.layer3, resnet.layer4
             self.feature_res = (53, 53)
+
         elif args.arch == 'vgg':
             vgg = vgg16_bn(pretrained=args.pretrained)
             self.layer0, self.layer1, self.layer2, self.layer3, self.layer4 = get_vgg16_layer(vgg)
@@ -103,6 +102,7 @@ class PSPNet(nn.Module):
                 m.dilation, m.padding, m.stride = (4, 4), (4, 4), (1, 1)
             elif 'downsample.0' in n:
                 m.stride = (1, 1)
+
         if self.m_scale:
             fea_dim = 1024 + 512
         else:
@@ -132,22 +132,29 @@ class PSPNet(nn.Module):
         H = int((x_size[2] - 1) / 8 * self.zoom_factor + 1)
         W = int((x_size[3] - 1) / 8 * self.zoom_factor + 1)
 
-        x = self.extract_features(x)
+        x, fea_lst = self.extract_features(x)
         x = self.classify(x, (H, W))
-        return x
+        if self.rmid:
+            return x, fea_lst
+        else:
+            return x
 
     def extract_features(self, x):
         x = self.layer0(x)
         x = self.layer1(x)
         x_2 = self.layer2(x)
         x_3 = self.layer3(x_2)
+        x_4 = self.layer4(x_3)
         if self.m_scale:
             x = torch.cat([x_2, x_3], dim=1)
         else:
-            x = self.layer4(x_3)
+            x = x_4
         x = self.ppm(x)
         x = self.bottleneck(x)
-        return x
+        if self.rmid:
+            return x, [x_2, x_3, x_4]
+        else:
+            return x, []
 
     def extract_features_backbone(self, x):
         x = self.layer0(x)

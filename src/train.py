@@ -17,7 +17,6 @@ from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
 from .util import setup, cleanup, to_one_hot, batch_intersectionAndUnionGPU, find_free_port
-from tqdm import tqdm
 from .test import validate_transformer
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
@@ -52,8 +51,7 @@ def main(args: argparse.Namespace) -> None:
         torch.cuda.manual_seed_all(args.manual_seed)
 
     # ====== Model + Optimizer ======
-    model = get_model(args)
-    model = model.cuda()
+    model = get_model(args).cuda()
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
@@ -118,6 +116,7 @@ def main(args: argparse.Namespace) -> None:
     log_iter = iter_per_epoch
 
     # ====== Training  ======
+    print('==> Start training')
     for epoch in range(args.epochs):
 
         _, _ = do_epoch(
@@ -220,7 +219,7 @@ def do_epoch(
             ignore_index=255)
 
         with torch.no_grad():
-            f_s = model.extract_features(spprt_imgs_reshape)  # [n_support, c, h, w]
+            f_s, _ = model.extract_features(spprt_imgs_reshape)  # [n_support, c, h, w]
 
         for index in range(args.adapt_iter):
             output_support = binary_cls(f_s)
@@ -247,7 +246,7 @@ def do_epoch(
 
         model.eval()
         with torch.no_grad():
-            f_q = model.extract_features(qry_img)  # [1, c, h, w]
+            f_q, _ = model.extract_features(qry_img)  # [1, c, h, w]
             f_q = F.normalize(f_q, dim=1)          # [1, c, 60, 60]
 
         # Weights of the classifier.
@@ -282,9 +281,7 @@ def do_epoch(
         train_losses[i] = loss_meter.avg
         train_Ious[i] = mIoU
 
-    print('Epoch {}: The mIoU {:.2f}, loss {:.2f}'.format(
-        epoch + 1, train_Ious.mean(), train_losses.mean()
-    ))
+    print('Epoch {}: The mIoU {:.2f}, loss {:.2f}'.format(epoch + 1, train_Ious.mean(), train_losses.mean()))
 
     return train_Ious, train_losses
 

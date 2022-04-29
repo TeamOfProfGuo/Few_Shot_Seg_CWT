@@ -172,7 +172,7 @@ def validate_transformer(
                     ignore_index=255)
 
                 with torch.no_grad():
-                    f_s = model.extract_features(spprt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
+                    f_s, _ = model.extract_features(spprt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
 
                 for index in range(args.adapt_iter):
                     output_support = binary_classifier(f_s)
@@ -185,7 +185,7 @@ def validate_transformer(
 
                 # ====== Phase 2: Update classifier's weights with old weights and query features. ======
                 with torch.no_grad():
-                    f_q = model.extract_features(qry_img)  # [n_task, c, h, w]
+                    f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
                     f_q = F.normalize(f_q, dim=1)
 
                     weights_cls = binary_classifier.weight.data  # [2, c, 1, 1]

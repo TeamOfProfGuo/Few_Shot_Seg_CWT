@@ -206,7 +206,7 @@ criterion = nn.CrossEntropyLoss(
 )
 
 with torch.no_grad():
-    f_s = model.extract_features(spprt_imgs_reshape)  # [n_task, c, h, w]   [2, 512, 60, 60]
+    f_s, _ = model.extract_features(spprt_imgs_reshape)  # [n_task, c, h, w]   [2, 512, 60, 60]
     # f_s = model.module.extract_features(spprt_imgs_reshape)  # [n_task, c, h, w]
 
 args.adapt_iter = 2
@@ -236,7 +236,7 @@ criterion = nn.CrossEntropyLoss(
 
 model.eval()
 with torch.no_grad():
-    f_q = model.extract_features(qry_img)  # [n_task, c, h, w]
+    f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
     f_q = F.normalize(f_q, dim=1)
 
 # Weights of the classifier.
@@ -349,7 +349,7 @@ criterion = nn.CrossEntropyLoss(
 )
 
 with torch.no_grad():
-    f_s = model.extract_features(spprt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
+    f_s, _= model.extract_features(spprt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
 
 for index in range(args.adapt_iter):
     output_support = binary_classifier(f_s)
@@ -364,7 +364,7 @@ for index in range(args.adapt_iter):
 
 # ====== Phase 2: Update classifier's weights with old weights and query features. ======
 with torch.no_grad():
-    f_q = model.extract_features(qry_img)  # [n_task, c, h, w]
+    f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
     f_q = F.normalize(f_q, dim=1)
 
     weights_cls = binary_classifier.weight.data  # [2, c, 1, 1]
@@ -390,3 +390,12 @@ with torch.no_grad():
 logits_q[i] = pred_q.detach()
 gt_q[i, 0] = q_label
 classes.append([class_.item() for class_ in subcls])
+
+logits = F.interpolate(logits_q.squeeze(1), size=(H, W),mode='bilinear', align_corners=True).detach()
+intersection, union, _ = batch_intersectionAndUnionGPU(logits.unsqueeze(1), gt_q, 2)
+intersection, union = intersection.cpu(), union.cpu()
+
+logits = logits.unsqueeze(1)
+target = gt_q
+num_classes = 2
+ignore_index = 255
