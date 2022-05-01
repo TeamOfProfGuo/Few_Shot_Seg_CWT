@@ -59,27 +59,28 @@ if args.manual_seed is not None:
 # ====== Model + Optimizer ======
 model = get_model(args)
 
-args.resume_weights = './pretrained_models/pascal/split=0/pspnet_resnet50/best.pth'
 if args.resume_weights:
-    if os.path.isfile(args.resume_weights):
-        print("=> loading weight '{}'".format(args.resume_weights))
-
-        pre_weight = torch.load(args.resume_weights, map_location=lambda storage, location: storage)['state_dict']
-
+    fname = args.resume_weights + args.train_name + '/' + \
+            'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
+    if os.path.isfile(fname):
+        print("=> loading weight '{}'".format(fname))
+        pre_weight = torch.load(fname, map_location=lambda storage, location: storage)['state_dict']
         pre_dict = model.state_dict()
+
         for index, key in enumerate(pre_dict.keys()):
             if 'classifier' not in key and 'gamma' not in key:
-                if pre_dict[key].shape == pre_weight['module.'+key].shape:
-                    pre_dict[key] = pre_weight['module.'+key]
+                if pre_dict[key].shape == pre_weight['module.' + key].shape:
+                    pre_dict[key] = pre_weight['module.' + key]
+                    print('load ' + key)
                 else:
                     print('Pre-trained shape and model shape for {}: {}, {}'.format(
-                        key, pre_weight['module.'+key].shape, pre_dict[key].shape))
+                        key, pre_weight['module.' + key].shape, pre_dict[key].shape))
                     continue
 
         model.load_state_dict(pre_dict, strict=True)
-        print("=> loaded weight '{}'".format(args.resume_weights))
+        print("=> loaded weight '{}'".format(fname))
     else:
-        print("=> no weight found at '{}'".format(args.resume_weights))
+        print("=> no weight found at '{}'".format(fname))
 
     # Fix the backbone layers
     for param in model.layer0.parameters():

@@ -224,7 +224,7 @@ def do_epoch(
         train_iou_meter0.update(mIoU0, 1)
 
         if i%2000 == 0:
-            print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
+            print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {}'.format(
                 epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg, train_loss_meter.avg, model.gamma))
             train_iou_meter.reset()
             train_loss_meter.reset()
