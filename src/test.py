@@ -158,6 +158,7 @@ def validate_transformer(
                     qry_img = qry_img.cuda()
 
                 # ====== Phase 1: Train a new binary classifier on support samples. ======
+
                 binary_classifier = nn.Conv2d(args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False).cuda()
 
                 optimizer = optim.SGD(binary_classifier.parameters(), lr=args.cls_lr)
@@ -228,7 +229,7 @@ def validate_transformer(
                     iter_num, args.test_num, mIoU, loss_meter=loss_meter))
 
         runtimes[run] = runtime
-        mIoU = np.mean(list(IoU.values()))
+        mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
         print('mIoU---Val result: mIoU {:.4f}.'.format(mIoU))
         for class_ in cls_union:
             print("Class {} : {:.4f}".format(class_, IoU[class_]))

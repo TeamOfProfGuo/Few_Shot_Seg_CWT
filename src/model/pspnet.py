@@ -1,6 +1,7 @@
 # encoding:utf-8
 
 import torch
+import numpy as np
 from torch import nn
 import torch.nn.functional as F
 from .resnet import resnet50, resnet101
@@ -74,6 +75,7 @@ class PSPNet(nn.Module):
         self.m_scale = args.m_scale
         self.bottleneck_dim = args.bottleneck_dim
         self.rmid = args.get('rmid', False)     # 是否返回中间层
+        self.args = args
 
         if args.arch == 'resnet':
             if args.layers == 50:
@@ -120,6 +122,8 @@ class PSPNet(nn.Module):
                 nn.Dropout2d(p=args.dropout)
             )
         self.classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False)
+
+        self.gamma = nn.Parameter(torch.zeros(1))
 
     def freeze_bn(self):
         for m in self.modules():
@@ -172,3 +176,64 @@ class PSPNet(nn.Module):
         if self.zoom_factor != 1:
             x = F.interpolate(x, size=shape, mode='bilinear', align_corners=True)
         return x
+
+    def inner_loop(self, f_s, s_label):
+        # input: f_s 为feature extractor输出的 feature map
+        self.classifier.reset_parameters()
+
+        # optimizer and loss function
+        optimizer = torch.optim.SGD(self.classifier.parameters(), lr=self.args.cls_lr)
+
+        s_label_arr = s_label.cpu().numpy().copy()  # [ n_shots, img_size, img_size]
+        back_pix = np.where(s_label_arr == 0)
+        target_pix = np.where(s_label_arr == 1)
+        weight = torch.tensor([1.0, len(back_pix[0]) / len(target_pix[0])])  # bg的weight: num of gf pixels
+        if torch.cuda.is_available():
+            weight = weight.cuda()
+        criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255)
+
+        # inner loop 学习 classifier的params
+        for index in range(self.args.adapt_iter):
+            pred_s_label = self.classifier(f_s)  # [n_shot, 2(cls), 60, 60]
+            pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:],mode='bilinear', align_corners=True)
+            s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+            optimizer.zero_grad()
+            s_loss.backward()
+            optimizer.step()
+
+    def outer_forward(self, f_q, f_s, fq_fea, fs_fea):
+        # 最后为了finetune f_q
+        bs, C, height, width = f_q.size()
+
+        # 基于attention, refine f_q, 并对query img做prediction
+        proj_q = fq_fea.view(bs, -1, height * width).permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
+        proj_k = fs_fea.view(bs, -1, height * width)  # [1, 2048, hw]
+        proj_v = f_s.view(bs, -1, height * width)
+        sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
+        attention = F.softmax(sim, dim=-1)
+        weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
+        weighted_v = weighted_v.view(bs, C, height, width)
+
+        out = (weighted_v * self.gamma + f_q)/(1+self.gamma)
+        pred_q_label = self.classifier(out)
+        return pred_q_label
+
+
+        # pred_q_label = F.interpolate(pred_q_label, size=q_label.shape[1:],mode='bilinear', align_corners=True)
+        #
+        # # loss function for outer loop
+        # # Dynamic class weights used for query image only during training
+        # q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
+        # q_back_pix = np.where(q_label_arr == 0)
+        # q_target_pix = np.where(q_label_arr == 1)
+        # loss_weight = torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)])
+        # loss_weight = loss_weight.cuda() if torch.cuda.is_available() else loss_weight
+        # criterion = nn.CrossEntropyLoss(weight=loss_weight,ignore_index=255)
+        # q_loss = criterion(pred_q_label, q_label.long())
+
+
+
+
+
+
+
