@@ -56,15 +56,15 @@ def main(args: argparse.Namespace) -> None:
         if os.path.isfile(fname):
             print("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
-
             pre_dict = model.state_dict()
-            for index, (key1, key2) in enumerate(zip(pre_dict.keys(), pre_weight.keys())):
-                if 'classifier' not in key1 and index < len(pre_dict.keys()):
-                    if pre_dict[key1].shape == pre_weight[key2].shape:
-                        pre_dict[key1] = pre_weight[key2]
+
+            for index, key in enumerate(pre_dict.keys()):
+                if 'classifier' not in key and 'gamma' not in key:
+                    if pre_dict[key].shape == pre_weight['module.' + key].shape:
+                        pre_dict[key] = pre_weight['module.' + key]
                     else:
-                        print('Pre-trained {} shape and model {} shape: {}, {}'.
-                              format(key2, key1, pre_weight[key2].shape, pre_dict[key1].shape))
+                        print('Pre-trained shape and model shape for {}: {}, {}'.format(
+                            key, pre_weight['module.' + key].shape, pre_dict[key].shape))
                         continue
 
             model.load_state_dict(pre_dict, strict=True)
@@ -91,7 +91,7 @@ def main(args: argparse.Namespace) -> None:
     # ====== Transformer ======
     param_list = [model.gamma]
     optimizer_meta = get_optimizer(args,[dict(params=param_list, lr=args.trans_lr * args.scale_lr)])
-    trans_save_dir = get_model_dir_trans(args)
+    trans_save_dir = os.path.join(args.model_dir,args.train_name,f'split={args.train_split}',f'shot_{args.shot}',f'{args.arch}{args.layers}')
 
     # ====== Data  ======
     train_loader, train_sampler = get_train_loader(args)
@@ -224,8 +224,8 @@ def do_epoch(
         train_iou_meter0.update(mIoU0, 1)
 
         if i%2000 == 0:
-            print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}'.format(
-                epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg, train_loss_meter.avg))
+            print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
+                epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg, train_loss_meter.avg, model.gamma))
             train_iou_meter.reset()
             train_loss_meter.reset()
 

@@ -67,17 +67,16 @@ if args.resume_weights:
         pre_weight = torch.load(args.resume_weights, map_location=lambda storage, location: storage)['state_dict']
 
         pre_dict = model.state_dict()
-        for index, (key1, key2) in enumerate(zip(pre_dict.keys(), pre_weight.keys())):
-            if 'classifier' not in key1 and index < len(pre_dict.keys()):
-                if pre_dict[key1].shape == pre_weight[key2].shape:
-                    pre_dict[key1] = pre_weight[key2]
+        for index, key in enumerate(pre_dict.keys()):
+            if 'classifier' not in key and 'gamma' not in key:
+                if pre_dict[key].shape == pre_weight['module.'+key].shape:
+                    pre_dict[key] = pre_weight['module.'+key]
                 else:
-                    print('Pre-trained {} shape and model {} shape: {}, {}'.
-                          format(key2, key1, pre_weight[key2].shape, pre_dict[key1].shape))
+                    print('Pre-trained shape and model shape for {}: {}, {}'.format(
+                        key, pre_weight['module.'+key].shape, pre_dict[key].shape))
                     continue
 
         model.load_state_dict(pre_dict, strict=True)
-
         print("=> loaded weight '{}'".format(args.resume_weights))
     else:
         print("=> no weight found at '{}'".format(args.resume_weights))
