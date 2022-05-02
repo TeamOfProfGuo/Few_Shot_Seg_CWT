@@ -123,7 +123,7 @@ class PSPNet(nn.Module):
             )
         self.classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False)
 
-        self.gamma = nn.Parameter(torch.zeros(1))
+        self.gamma = nn.Parameter(torch.tensor(0.5))
 
     def freeze_bn(self):
         for m in self.modules():
@@ -201,15 +201,26 @@ class PSPNet(nn.Module):
             s_loss.backward()
             optimizer.step()
 
-    def outer_forward(self, f_q, f_s, fq_fea, fs_fea):
-        # 最后为了finetune f_q
+    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label):
+        # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
         bs, C, height, width = f_q.size()
 
         # 基于attention, refine f_q, 并对query img做prediction
         proj_q = fq_fea.view(bs, -1, height * width).permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
         proj_k = fs_fea.view(bs, -1, height * width)  # [1, 2048, hw]
         proj_v = f_s.view(bs, -1, height * width)
+
+        # normalize q and k
+        proj_q = F.normalize(proj_q, dim=-1)
+        proj_k = F.normalize(proj_k, dim=-2)
         sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
+
+        # mask ignored pixels
+        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
+        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
+        s_mask = s_mask.expand(sim.shape)                   # [1, q_hw, hw]
+        sim[s_mask == True] = -1.0
+
         attention = F.softmax(sim, dim=-1)
         weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
         weighted_v = weighted_v.view(bs, C, height, width)

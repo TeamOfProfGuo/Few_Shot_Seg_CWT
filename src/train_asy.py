@@ -88,12 +88,12 @@ def main(args: argparse.Namespace) -> None:
         for param in model.bottleneck.parameters():
             param.requires_grad = False
 
-    # ====== Transformer ======
+    # ======= Transformer =======
     param_list = [model.gamma]
     optimizer_meta = get_optimizer(args,[dict(params=param_list, lr=args.trans_lr * args.scale_lr)])
     trans_save_dir = os.path.join(args.model_dir,args.train_name,f'split={args.train_split}',f'shot_{args.shot}',f'{args.arch}{args.layers}')
 
-    # ====== Data  ======
+    # ========= Data  ==========
     train_loader, train_sampler = get_train_loader(args)
     episodic_val_loader, _ = get_val_loader(args)
 
@@ -105,46 +105,109 @@ def main(args: argparse.Namespace) -> None:
     print('==> Start training')
     for epoch in range(args.epochs):
 
-        do_epoch(
-            args=args,
-            train_loader=train_loader,
-            model=model,
-            optimizer_meta = optimizer_meta,
-            epoch=epoch,
-            iter_per_epoch=iter_per_epoch)
+        train_loss_meter = AverageMeter()
+        train_iou_meter = AverageMeter()
+        train_loss_meter0 = AverageMeter()
+        train_iou_meter0 = AverageMeter()
 
-        val_Iou, val_loss = validate_epoch(
-            args=args,
-            val_loader=episodic_val_loader,
-            model=model)
+        iterable_train_loader = iter(train_loader)
+        for i in range(iter_per_epoch):
+            qry_img, q_label, spprt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
 
-        # Model selection
-        if val_Iou.item() > max_val_mIoU:
-            max_val_mIoU = val_Iou.item()
+            if torch.cuda.is_available():
+                spprt_imgs = spprt_imgs.cuda()  # [1, 1, 3, h, w]
+                s_label = s_label.cuda()  # [1, 1, h, w]
+                q_label = q_label.cuda()  # [1, h, w]
+                qry_img = qry_img.cuda()  # [1, 3, h, w]
 
-            os.makedirs(trans_save_dir, exist_ok=True)
-            filename_transformer = os.path.join(trans_save_dir, f'best.pth')
+            # ====== Phase 1: Train the binary classifier on support samples ======
 
-            if args.save_models:
-                print('Saving checkpoint to: ' + filename_transformer)
+            if spprt_imgs.shape[1] == 1:
+                spprt_imgs_reshape = spprt_imgs.squeeze(0).expand(2, 3, args.image_size, args.image_size)
+                s_label_reshape = s_label.squeeze(0).expand(2, args.image_size, args.image_size).long()
+            else:
+                spprt_imgs_reshape = spprt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
+                s_label_reshape = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
+            # fine-tune classifier
+            model.train()
+            f_s, fs_lst = model.extract_features(spprt_imgs_reshape)
+            model.inner_loop(f_s, s_label_reshape)
+
+            # ====== Phase 2: Train the attention to update query score  ======
+            # query score: baseline model vs. attention based
+            model.eval()
+            with torch.no_grad():
+                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+                pred_q0 = model.classifier(f_q)
+                pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+            # 基于attention refine pred_q
+            fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
+            fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1])
+            pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+            # Loss function: Dynamic class weights used for query image only during training
+            q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
+            q_back_pix = np.where(q_label_arr == 0)
+            q_target_pix = np.where(q_label_arr == 1)
+            loss_weight = torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]).cuda()
+            criterion = nn.CrossEntropyLoss(weight=loss_weight, ignore_index=255)
+            q_loss = criterion(pred_q, q_label.long())
+            q_loss0 = criterion(pred_q0, q_label.long())
+
+            optimizer_meta.zero_grad()
+            q_loss.backward()
+            optimizer_meta.step()
+
+            # Print loss and mIoU
+            intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
+            mIoU = (intersection / (union + 1e-10)).mean()  # mean of BG and FG
+            train_loss_meter.update(q_loss.item() / args.batch_size, 1)
+            train_iou_meter.update(mIoU, 1)
+            intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
+            mIoU0 = (intersection0 / (union0 + 1e-10)).mean()  # mean of BG and FG
+            train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
+            train_iou_meter0.update(mIoU0, 1)
+            print('Epoch {} Iter {} mIoU0 {:.2f} mIoU {:.2f}'.format(epoch+1, i, mIoU0, mIoU))
+
+            if i % 1000 == 0:
+                print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
+                    epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
+                    train_loss_meter.avg, model.gamma.item()))
+                train_iou_meter.reset()
+                train_loss_meter.reset()
+
+
+                val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model)
+
+                # Model selection
+                if val_Iou.item() > max_val_mIoU:
+                    max_val_mIoU = val_Iou.item()
+
+                    os.makedirs(trans_save_dir, exist_ok=True)
+                    filename_transformer = os.path.join(trans_save_dir, f'best.pth')
+
+                    if args.save_models:
+                        print('Saving checkpoint to: ' + filename_transformer)
+
+                        torch.save(
+                            {'epoch': epoch,
+                             'state_dict': model.state_dict(),
+                             'optimizer': optimizer_meta.state_dict()},
+                            filename_transformer
+                        )
+
+                print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
+
+            if args.save_models:  # 所有跑完，存last epoch
+                filename_transformer = os.path.join(trans_save_dir, 'final.pth')
                 torch.save(
-                    {'epoch': epoch,
+                    {'epoch': args.epochs,
                      'state_dict': model.state_dict(),
                      'optimizer': optimizer_meta.state_dict()},
                     filename_transformer
                 )
-
-        print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
-
-    if args.save_models:  # 所有跑完，存last epoch
-        filename_transformer = os.path.join(trans_save_dir, 'final.pth')
-        torch.save(
-            {'epoch': args.epochs,
-             'state_dict': model.state_dict(),
-             'optimizer': optimizer_meta.state_dict()},
-            filename_transformer
-        )
 
 
 def do_epoch(
@@ -294,7 +357,7 @@ def validate_epoch(args, val_loader, model):
             print('Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
                 iter_num, args.test_num, mIoU, loss_meter=loss_meter))
 
-    runtime = time.time() - start_time()
+    runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
     print('mIoU---Val result: mIoU {:.4f} | time used {:.1f}m.'.format(mIoU, runtime/60))
     for class_ in cls_union:
