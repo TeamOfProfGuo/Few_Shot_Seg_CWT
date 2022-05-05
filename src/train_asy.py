@@ -144,7 +144,7 @@ def main(args: argparse.Namespace) -> None:
             # 基于attention refine pred_q
             fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1])
+            pred_q = model.outer_forward(f_q, f_q, fq_fea, fq_fea, q_label)  # 如果输入 (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]) 则是cross attention
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
@@ -215,6 +215,10 @@ def validate_epoch(args, val_loader, model):
     cls_union = defaultdict(int)
     IoU = defaultdict(float)
 
+    cls_intersection0 = defaultdict(int)  # Default value is 0
+    cls_union0 = defaultdict(int)
+    IoU0 = defaultdict(float)
+
     for e in range(args.test_num):
 
         iter_num += 1
@@ -248,7 +252,7 @@ def validate_epoch(args, val_loader, model):
         # 用layer4 的output来做attention
         fs_fea = fs_lst[-1]   # [1, 2048, 60, 60]
         fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-        pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label)
+        pred_q = model.outer_forward(f_q, f_q, fq_fea, fq_fea, q_label)                          # 如果输入 (f_q, f_s, fq_fea, fs_fea, s_label) 则是cross attention
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         # IoU and loss
@@ -259,18 +263,25 @@ def validate_epoch(args, val_loader, model):
         cls_union[curr_cls] += union[1]                # only consider the FG
         IoU[curr_cls] = cls_intersection[curr_cls] / (cls_union[curr_cls] + 1e-10)   # cls wise IoU
 
+        intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
+        intersection0, union0 = intersection0.cpu(), union0.cpu()
+        cls_intersection0[curr_cls] += intersection0[1]  # only consider the FG
+        cls_union0[curr_cls] += union0[1]  # only consider the FG
+        IoU0[curr_cls] = cls_intersection0[curr_cls] / (cls_union0[curr_cls] + 1e-10)  # cls wise IoU
+
         criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
         loss = criterion_standard(pred_q, q_label)
         loss_meter.update(loss.item())
 
         if (iter_num % 200 == 0):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
-            print('Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                iter_num, args.test_num, mIoU, loss_meter=loss_meter))
+            mIoU0 = np.mean(IoU0[i] for i in IoU0)
+            print('Test: [{}/{}] mIoU0 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                iter_num, args.test_num, mIoU0, mIoU, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    print('mIoU---Val result: mIoU {:.4f} | time used {:.1f}m.'.format(mIoU, runtime/60))
+    print('mIoU---Val result: mIoU0 {:.4f}, mIoU {:.4f} | time used {:.1f}m.'.format(mIoU0, mIoU, runtime/60))
     for class_ in cls_union:
         print("Class {} : {:.4f}".format(class_, IoU[class_]))
 

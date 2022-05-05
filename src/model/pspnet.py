@@ -123,7 +123,7 @@ class PSPNet(nn.Module):
             )
         self.classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False)
 
-        self.gamma = nn.Parameter(torch.tensor(0.5))
+        self.gamma = nn.Parameter(torch.tensor(0.2))
 
     def freeze_bn(self):
         for m in self.modules():
