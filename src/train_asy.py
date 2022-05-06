@@ -275,7 +275,7 @@ def validate_epoch(args, val_loader, model):
 
         if (iter_num % 200 == 0):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
-            mIoU0 = np.mean(IoU0[i] for i in IoU0)
+            mIoU0 = np.mean([IoU0[i] for i in IoU0])
             print('Test: [{}/{}] mIoU0 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
                 iter_num, args.test_num, mIoU0, mIoU, loss_meter=loss_meter))
 
