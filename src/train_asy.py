@@ -144,7 +144,8 @@ def main(args: argparse.Namespace) -> None:
             # 基于attention refine pred_q
             fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-            pred_q = model.outer_forward(f_q, f_q, fq_fea, fq_fea, q_label)  # 如果输入 (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]) 则是cross attention
+            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1])
+            # cross attention (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
@@ -171,7 +172,7 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter0.update(mIoU0, 1)
             print('Epoch {} Iter {} mIoU0 {:.2f} mIoU {:.2f}'.format(epoch+1, i, mIoU0, mIoU))
 
-            if i % 1000 == 0:
+            if i % 500 == 0:
                 print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
                     epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
                     train_loss_meter.avg, model.gamma.item()))
@@ -252,7 +253,8 @@ def validate_epoch(args, val_loader, model):
         # 用layer4 的output来做attention
         fs_fea = fs_lst[-1]   # [1, 2048, 60, 60]
         fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-        pred_q = model.outer_forward(f_q, f_q, fq_fea, fq_fea, q_label)                          # 如果输入 (f_q, f_s, fq_fea, fs_fea, s_label) 则是cross attention
+        pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label)
+        # cross attention: (f_q, f_s, fq_fea, fs_fea, s_label), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         # IoU and loss

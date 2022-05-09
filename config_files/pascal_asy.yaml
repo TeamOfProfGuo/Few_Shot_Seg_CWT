@@ -27,7 +27,7 @@ TRAIN:
   log_freq : 50
   save_models: True
   cls_lr: 0.0025
-  trans_lr: 0.001
+  trans_lr: 0.0001
   scale_lr: 1.0
   mixup: False
   lr_stepsize: 30

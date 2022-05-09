@@ -218,8 +218,15 @@ class PSPNet(nn.Module):
         # mask ignored pixels
         s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
         s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
-        s_mask = s_mask.expand(sim.shape)                   # [1, q_hw, hw]
-        sim[s_mask == True] = -1.0
+        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
+        sim[s_mask == True] = 0.00001
+
+        # mutual nearest neighbor regularization
+        max_q = torch.max(sim, dim=-1)[0].unsqueeze(dim=-1)
+        max_s = torch.max(sim, dim=-2)[0].unsqueeze(dim=1)
+        sim = sim * sim * sim / max_q / max_s
+
+        sim[s_mask == True] = -10.0
 
         attention = F.softmax(sim, dim=-1)
         weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
