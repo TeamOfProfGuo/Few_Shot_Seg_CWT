@@ -170,9 +170,9 @@ def main(args: argparse.Namespace) -> None:
             mIoU0 = (intersection0 / (union0 + 1e-10)).mean()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
             train_iou_meter0.update(mIoU0, 1)
-            print('Epoch {} Iter {} mIoU0 {:.2f} mIoU {:.2f}'.format(epoch+1, i, mIoU0, mIoU))
+            print('Epoch {} Iter {} mIoU0 {:.2f} mIoU {:.2f} loss {:.2f}'.format(epoch+1, i, mIoU0, mIoU, q_loss))
 
-            if i % 500 == 0:
+            if i % 10 == 0:
                 print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
                     epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
                     train_loss_meter.avg, model.gamma.item()))
