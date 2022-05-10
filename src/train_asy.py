@@ -131,7 +131,8 @@ def main(args: argparse.Namespace) -> None:
 
             # fine-tune classifier
             model.train()
-            f_s, fs_lst = model.extract_features(spprt_imgs_reshape)
+            with torch.no_grad():
+                f_s, fs_lst = model.extract_features(spprt_imgs_reshape)
             model.inner_loop(f_s, s_label_reshape)
 
             # ====== Phase 2: Train the attention to update query score  ======
@@ -141,6 +142,7 @@ def main(args: argparse.Namespace) -> None:
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
             # 基于attention refine pred_q
             fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
@@ -163,14 +165,15 @@ def main(args: argparse.Namespace) -> None:
 
             # Print loss and mIoU
             intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
-            mIoU = (intersection / (union + 1e-10)).mean()  # mean of BG and FG
+            IoUf, IoUb = (intersection / (union + 1e-10)).numpy()  # mean of BG and FG
             train_loss_meter.update(q_loss.item() / args.batch_size, 1)
-            train_iou_meter.update(mIoU, 1)
+            train_iou_meter.update((IoUf+IoUb)/2, 1)
             intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
-            mIoU0 = (intersection0 / (union0 + 1e-10)).mean()  # mean of BG and FG
+            IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).numpy()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
-            train_iou_meter0.update(mIoU0, 1)
-            print('Epoch {} Iter {} mIoU0 {:.2f} mIoU {:.2f} loss {:.2f}'.format(epoch+1, i, mIoU0, mIoU, q_loss))
+            train_iou_meter0.update((IoUf0+IoUb0)/2, 1)
+            print('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f}'.format(
+                epoch+1, i, IoUf0, IoUb0, IoUf, IoUb, q_loss))
 
             if i % 10 == 0:
                 print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
