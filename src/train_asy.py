@@ -165,11 +165,11 @@ def main(args: argparse.Namespace) -> None:
 
             # Print loss and mIoU
             intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
-            IoUf, IoUb = (intersection / (union + 1e-10)).numpy()  # mean of BG and FG
+            IoUf, IoUb = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter.update(q_loss.item() / args.batch_size, 1)
             train_iou_meter.update((IoUf+IoUb)/2, 1)
             intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
-            IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).numpy()  # mean of BG and FG
+            IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
             train_iou_meter0.update((IoUf0+IoUb0)/2, 1)
             print('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f}'.format(
