@@ -159,9 +159,9 @@ def main(args: argparse.Namespace) -> None:
             q_loss = criterion(pred_q, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
 
-            optimizer_meta.zero_grad()
-            q_loss.backward()
-            optimizer_meta.step()
+            # optimizer_meta.zero_grad()
+            # q_loss.backward()
+            # optimizer_meta.step()
 
             # Print loss and mIoU
             intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
