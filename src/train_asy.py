@@ -211,6 +211,7 @@ def main(args: argparse.Namespace) -> None:
                                     'state_dict': model.state_dict(),
                                     'optimizer': optimizer_meta.state_dict()},
                                    filename_transformer)
+                    print('save ckpt to {}'.format(filename_transformer))
 
     if args.save_models:  # 所有跑完，存last epoch
         filename_transformer = os.path.join(trans_save_dir, 'final.pth')
