@@ -130,7 +130,7 @@ def main(args: argparse.Namespace) -> None:
                 s_label_reshape = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
             # fine-tune classifier
-            model.train()
+            model.eval()
             with torch.no_grad():
                 f_s, fs_lst = model.extract_features(spprt_imgs_reshape)
             model.inner_loop(f_s, s_label_reshape)
