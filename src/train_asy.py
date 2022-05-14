@@ -201,17 +201,17 @@ def main(args: argparse.Namespace) -> None:
                 print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
                 # For debugging
-                if i%50 == 0:
-                    os.makedirs(trans_save_dir, exist_ok=True)
-                    filename_transformer = os.path.join(trans_save_dir, 'debug_iter{}.pth'.format(i))
-
-                    if args.save_models:
-                        print('Saving checkpoint to: ' + filename_transformer)
-                        torch.save({'epoch': epoch,
-                                    'state_dict': model.state_dict(),
-                                    'optimizer': optimizer_meta.state_dict()},
-                                   filename_transformer)
-                    print('save ckpt to {}'.format(filename_transformer))
+                # if i%50 == 0:
+                #     os.makedirs(trans_save_dir, exist_ok=True)
+                #     filename_transformer = os.path.join(trans_save_dir, 'debug_iter{}.pth'.format(i))
+                #
+                #     if args.save_models:
+                #         print('Saving checkpoint to: ' + filename_transformer)
+                #         torch.save({'epoch': epoch,
+                #                     'state_dict': model.state_dict(),
+                #                     'optimizer': optimizer_meta.state_dict()},
+                #                    filename_transformer)
+                #     print('save ckpt to {}'.format(filename_transformer))
 
     if args.save_models:  # 所有跑完，存last epoch
         filename_transformer = os.path.join(trans_save_dir, 'final.pth')
