@@ -201,7 +201,59 @@ class PSPNet(nn.Module):
             s_loss.backward()
             optimizer.step()
 
-    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label):
+    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s = None):
+        # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
+        bs, C, height, width = f_q.size()
+
+        # 基于attention, refine f_q, 并对query img做prediction
+        proj_q = fq_fea.view(bs, -1, height * width).permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
+        proj_k = fs_fea.view(bs, -1, height * width)  # [1, 2048, hw]
+        proj_v = f_s.view(bs, -1, height * width)
+
+        # normalize q and k
+        proj_q = F.normalize(proj_q, dim=-1)
+        proj_k = F.normalize(proj_k, dim=-2)
+        sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
+
+        # mask ignored pixels
+        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
+        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
+        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
+        sim[s_mask == True] = 0.00001
+
+        # ignore misleading points
+        pd_q_mask0 = pd_q0.argmax(dim=1)
+        q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=f_q.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
+        qf_mask = (q_mask != 255.0) * (pd_q_mask0 == 1)  # predicted qry FG
+        qb_mask = (q_mask != 255.0) * (pd_q_mask0 == 0)  # predicted qry BG
+        qf_mask = qf_mask.view(qf_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted FG
+        qb_mask = qb_mask.view(qb_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted BG
+
+        sim_qf = sim[qf_mask].reshape(1, -1, 3600)
+        sim_qf = torch.mean(sim_qf, dim=1)  # 对应support img 与Q前景相关 所有pixel
+        sim_qb = sim[qb_mask].reshape(1, -1, 3600)
+        sim_qb = torch.mean(sim_qb, dim=1)  # 对应support img 与Q背景相关 所有pixel
+        sf_mask = pd_s.argmax(dim=1).view(1, 3600)
+
+        th = torch.quantile(sim.flatten(), 0.80)
+        ig_mask1 = (sim_qf > th) & (sf_mask == 0)
+        ig_mask2 = (sim_qf > th) & (sim_qb > th)
+        ig_mask3 = (sim_qb > th) & (sf_mask == 1)
+        ig_mask = ig_mask1 | ig_mask2 | ig_mask3
+
+        ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
+        sim[ig_mask == True] = 0.00001
+
+        attention = F.softmax(sim*20.0, dim=-1)
+        weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
+        weighted_v = weighted_v.view(bs, C, height, width)
+
+        out = (weighted_v * self.gamma + f_q)/(1+self.gamma)
+        pred_q_label = self.classifier(out)
+        return pred_q_label
+
+
+    def outer_forward1(self, f_q, f_s, fq_fea, fs_fea, s_label):
         # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
         bs, C, height, width = f_q.size()
 
@@ -236,18 +288,6 @@ class PSPNet(nn.Module):
         pred_q_label = self.classifier(out)
         return pred_q_label
 
-
-        # pred_q_label = F.interpolate(pred_q_label, size=q_label.shape[1:],mode='bilinear', align_corners=True)
-        #
-        # # loss function for outer loop
-        # # Dynamic class weights used for query image only during training
-        # q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
-        # q_back_pix = np.where(q_label_arr == 0)
-        # q_target_pix = np.where(q_label_arr == 1)
-        # loss_weight = torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)])
-        # loss_weight = loss_weight.cuda() if torch.cuda.is_available() else loss_weight
-        # criterion = nn.CrossEntropyLoss(weight=loss_weight,ignore_index=255)
-        # q_loss = criterion(pred_q_label, q_label.long())
 
 
 

@@ -140,13 +140,14 @@ def main(args: argparse.Namespace) -> None:
             model.eval()
             with torch.no_grad():
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-                pred_q0 = model.classifier(f_q)
-                pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+                pd_q0 = model.classifier(f_q)
+                pd_s  = model.classifier(f_s[0:1])
+                pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # 基于attention refine pred_q
             fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1])
+            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1], q_label, pd_q0, pd_s)
             # cross attention (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
@@ -159,9 +160,9 @@ def main(args: argparse.Namespace) -> None:
             q_loss = criterion(pred_q, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
 
-            # optimizer_meta.zero_grad()
-            # q_loss.backward()
-            # optimizer_meta.step()
+            optimizer_meta.zero_grad()
+            q_loss.backward()
+            optimizer_meta.step()
 
             # Print loss and mIoU
             intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
@@ -175,7 +176,7 @@ def main(args: argparse.Namespace) -> None:
             print('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f}'.format(
                 epoch+1, i, IoUf0, IoUb0, IoUf, IoUb, q_loss))
 
-            if i % 10 == 0:
+            if i % 20 == 0:
                 print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
                     epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
                     train_loss_meter.avg, model.gamma.item()))
