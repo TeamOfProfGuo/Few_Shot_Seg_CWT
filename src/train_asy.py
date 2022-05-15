@@ -173,11 +173,11 @@ def main(args: argparse.Namespace) -> None:
             IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
             train_iou_meter0.update((IoUf0+IoUb0)/2, 1)
-            print('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f}'.format(
-                epoch+1, i, IoUf0, IoUb0, IoUf, IoUb, q_loss))
+            print('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} gamma {:.2f} gammaG {:.4f}'.format(
+                epoch+1, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, model.gamma.item(), model.gamma.grad))
 
             if i % 20 == 0:
-                print('Epoch {}: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
+                print('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
                     epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
                     train_loss_meter.avg, model.gamma.item()))
                 train_iou_meter.reset()
