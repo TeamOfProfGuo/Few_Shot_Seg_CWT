@@ -265,12 +265,13 @@ def validate_epoch(args, val_loader, model):
         model.eval()
         with torch.no_grad():
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-            pred_q0 = model.classifier(f_q)
-            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+            pd_q0 = model.classifier(f_q)
+            pd_s  = model.classifier(f_s)
+            pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
         # 用layer4 的output来做attention
         fs_fea = fs_lst[-1]   # [1, 2048, 60, 60]
         fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-        pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label)
+        pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
         # cross attention: (f_q, f_s, fq_fea, fs_fea, s_label), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
