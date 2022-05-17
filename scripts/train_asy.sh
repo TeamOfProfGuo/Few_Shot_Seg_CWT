@@ -32,7 +32,6 @@ singularity exec --nv \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
 						    trans_lr 0.001 \
-						    heads 4 \
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
