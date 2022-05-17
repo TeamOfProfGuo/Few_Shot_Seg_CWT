@@ -233,15 +233,21 @@ class PSPNet(nn.Module):
         if sim_qf.numel() > 0:
             th_qf = torch.quantile(sim_qf.flatten(), 0.8)
             sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel
+        else:
+            print('------ pred qf mask is empty! ------')
         sim_qb = sim[qb_mask].reshape(1, -1, 3600)
         if sim_qb.numel() > 0:
             th_qb = torch.quantile(sim_qb.flatten(), 0.8)
             sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
+        else:
+            print('------ pred qb mask is empty! ------')
         sf_mask = pd_s.argmax(dim=1).view(1, 3600)
 
-        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else torch.zeros([1, 3600], dtype=torch.bool)
-        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else torch.zeros([1, 3600], dtype=torch.bool)
-        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel()>0 and sim_qb.numel()>0 else torch.zeros([1, 3600], dtype=torch.bool)
+        null_mask = torch.zeros([1, 3600], dtype=torch.bool)
+        null_mask = null_mask.cuda() if torch.cuda.is_available() else null_mask
+        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
+        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else null_mask
+        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel() > 0 and sim_qb.numel() > 0 else null_mask
         ig_mask = ig_mask1 | ig_mask2 | ig_mask3
 
         ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
