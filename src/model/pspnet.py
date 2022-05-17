@@ -230,22 +230,24 @@ class PSPNet(nn.Module):
         qb_mask = qb_mask.view(qb_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted BG
 
         sim_qf = sim[qf_mask].reshape(1, -1, 3600)
-        th_qf = torch.quantile(sim_qf.flatten(), 0.8)
+        if sim_qf.numel() > 0:
+            th_qf = torch.quantile(sim_qf.flatten(), 0.8)
+            sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel
         sim_qb = sim[qb_mask].reshape(1, -1, 3600)
-        th_qb = torch.quantile(sim_qb.flatten(), 0.8)
-        sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel
-        sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
+        if sim_qb.numel() > 0:
+            th_qb = torch.quantile(sim_qb.flatten(), 0.8)
+            sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
         sf_mask = pd_s.argmax(dim=1).view(1, 3600)
 
-        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0)
-        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb)
-        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1)
+        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else torch.zeros([1, 3600], dtype=torch.bool)
+        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else torch.zeros([1, 3600], dtype=torch.bool)
+        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel()>0 and sim_qb.numel()>0 else torch.zeros([1, 3600], dtype=torch.bool)
         ig_mask = ig_mask1 | ig_mask2 | ig_mask3
 
         ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
         sim[ig_mask == True] = 0.00001
 
-        attention = F.softmax(sim*20.0, dim=-1)
+        attention = F.softmax(sim * self.args.temp, dim=-1)
         weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
         weighted_v = weighted_v.view(bs, C, height, width)
 
