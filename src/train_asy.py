@@ -35,7 +35,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
-    log(args)
 
     sv_path = 'asy_{}/{}{}/shot{}_split{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
@@ -43,6 +42,8 @@ def main(args: argparse.Namespace) -> None:
     ensure_path(sv_path)
     set_log_path(path=sv_path)
     log('save_path {}'.format(sv_path))
+
+    log(args)
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
