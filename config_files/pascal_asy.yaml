@@ -50,7 +50,7 @@ MODEL:
   layers: 50
   bottleneck_dim: 512
   backbone_dim: 2048
-  temp: 20.0
+  temp: 40.0
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   rmid: True
@@ -69,5 +69,5 @@ EVALUATION:
   n_runs: 1
   save_oracle: False
 
-DISTRIBUTED:
-  gpus: [0]
+EXPERIMENT:
+  exp_name: a
