@@ -54,6 +54,7 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   rmid: True
+  att_level: al3_tp40
 
 EVALUATION:
   shot: 1

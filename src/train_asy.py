@@ -151,8 +151,8 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # 基于attention refine pred_q
-            fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
-            fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+            fs_fea = fs_lst[args.att_level-2]  # [2, 2048, 60, 60]
+            fq_fea = fq_lst[args.att_level-2]  # [1, 2048, 60, 60]
             pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1], q_label, pd_q0, pd_s)
             # cross attention (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
@@ -274,8 +274,8 @@ def validate_epoch(args, val_loader, model):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
         # 用layer4 的output来做attention
-        fs_fea = fs_lst[-1]   # [1, 2048, 60, 60]
-        fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+        fs_fea = fs_lst[args.att_level-2]  # [1, 2048, 60, 60]
+        fq_fea = fq_lst[args.att_level-2]  # [1, 2048, 60, 60]
         pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
         # cross attention: (f_q, f_s, fq_fea, fs_fea, s_label), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
