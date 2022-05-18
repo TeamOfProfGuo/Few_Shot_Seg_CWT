@@ -17,10 +17,9 @@ from .model.transformer import MultiHeadAttentionOne
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
-from .test import validate_transformer
-import argparse
-from typing import Tuple
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list
+from .util import ensure_path, set_log_path, log
+import argparse
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +35,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
-    print(args)
+    log(args)
+
+    sv_path = 'asy_{}/{}{}/shot{}_split{}/{}'.format(
+        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+    sv_path = os.path.join('./results', sv_path)
+    ensure_path(sv_path)
+    set_log_path(path=sv_path)
+    log('save_path {}'.format(sv_path))
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -54,7 +60,7 @@ def main(args: argparse.Namespace) -> None:
         fname = args.resume_weights + args.train_name + '/' + \
                 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
-            print("=> loading weight '{}'".format(fname))
+            log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
             pre_dict = model.state_dict()
 
@@ -63,14 +69,14 @@ def main(args: argparse.Namespace) -> None:
                     if pre_dict[key].shape == pre_weight['module.' + key].shape:
                         pre_dict[key] = pre_weight['module.' + key]
                     else:
-                        print('Pre-trained shape and model shape for {}: {}, {}'.format(
+                        log('Pre-trained shape and model shape for {}: {}, {}'.format(
                             key, pre_weight['module.' + key].shape, pre_dict[key].shape))
                         continue
 
             model.load_state_dict(pre_dict, strict=True)
-            print("=> loaded weight '{}'".format(fname))
+            log("=> loaded weight '{}'".format(fname))
         else:
-            print("=> no weight found at '{}'".format(fname))
+            log("=> no weight found at '{}'".format(fname))
 
         # Fix the backbone layers
         for param in model.layer0.parameters():
@@ -91,7 +97,6 @@ def main(args: argparse.Namespace) -> None:
     # ======= Transformer =======
     param_list = [model.gamma]
     optimizer_meta = get_optimizer(args,[dict(params=param_list, lr=args.trans_lr * args.scale_lr)])
-    trans_save_dir = os.path.join(args.model_dir,args.train_name,f'split={args.train_split}',f'shot_{args.shot}',f'{args.arch}{args.layers}')
 
     # ========= Data  ==========
     train_loader, train_sampler = get_train_loader(args)
@@ -102,7 +107,7 @@ def main(args: argparse.Namespace) -> None:
     iter_per_epoch = args.iter_per_epoch if args.iter_per_epoch <= len(train_loader) else len(train_loader)
 
     # ====== Training  ======
-    print('==> Start training')
+    log('==> Start training')
     for epoch in range(args.epochs):
 
         train_loss_meter = AverageMeter()
@@ -173,11 +178,11 @@ def main(args: argparse.Namespace) -> None:
             IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
             train_iou_meter0.update((IoUf0+IoUb0)/2, 1)
-            print('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} gamma {:.4f} gammaG {:.4f} lr {:.4f}'.format(
+            log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} gamma {:.4f} gammaG {:.4f} lr {:.4f}'.format(
                 epoch+1, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, model.gamma.item(), model.gamma.grad, optimizer_meta.param_groups[0]['lr']))
 
             if i % 20 == 0:
-                print('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
+                log('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
                     epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
                     train_loss_meter.avg, model.gamma.item()))
                 train_iou_meter.reset()
@@ -189,17 +194,16 @@ def main(args: argparse.Namespace) -> None:
                 if val_Iou.item() > max_val_mIoU:
                     max_val_mIoU = val_Iou.item()
 
-                    os.makedirs(trans_save_dir, exist_ok=True)
-                    filename_transformer = os.path.join(trans_save_dir, f'best.pth')
+                    filename_transformer = os.path.join(sv_path, f'best.pth')
 
                     if args.save_models:
-                        print('Saving checkpoint to: ' + filename_transformer)
+                        log('Saving checkpoint to: ' + filename_transformer)
                         torch.save( {'epoch': epoch,
                                      'state_dict': model.state_dict(),
                                      'optimizer': optimizer_meta.state_dict()},
                                     filename_transformer)
 
-                print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
+                log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
                 # For debugging
                 # if i%50 == 0:
@@ -215,7 +219,7 @@ def main(args: argparse.Namespace) -> None:
                 #     print('save ckpt to {}'.format(filename_transformer))
 
     if args.save_models:  # 所有跑完，存last epoch
-        filename_transformer = os.path.join(trans_save_dir, 'final.pth')
+        filename_transformer = os.path.join(sv_path, 'final.pth')
         torch.save(
             {'epoch': args.epochs,
              'state_dict': model.state_dict(),
@@ -224,7 +228,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 def validate_epoch(args, val_loader, model):
-    print('==> Start testing')
+    log('==> Start testing')
 
     iter_num = 0
     start_time = time.time()
@@ -296,14 +300,15 @@ def validate_epoch(args, val_loader, model):
         if (iter_num % 200 == 0):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
-            print('Test: [{}/{}] mIoU0 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+            log('Test: [{}/{}] mIoU0 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
                 iter_num, args.test_num, mIoU0, mIoU, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    print('mIoU---Val result: mIoU0 {:.4f}, mIoU {:.4f} | time used {:.1f}m.'.format(mIoU0, mIoU, runtime/60))
+    log('mIoU---Val result: mIoU0 {:.4f}, mIoU {:.4f} | time used {:.1f}m.'.format(mIoU0, mIoU, runtime/60))
     for class_ in cls_union:
-        print("Class {} : {:.4f}".format(class_, IoU[class_]))
+        log("Class {} : {:.4f}".format(class_, IoU[class_]))
+    log('\n')
 
     return mIoU, loss_meter.avg
 

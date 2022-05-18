@@ -18,8 +18,6 @@ SPLIT=$2
 LAYERS=$3
 SHOT=$4
 
-dirname="results/train_asy/resnet-${LAYERS}/${DATA}/split_${SPLIT}/shot_${SHOT}"
-mkdir -p -- "$dirname"
 
 
 echo "start"
@@ -36,8 +34,8 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 20 \
-						    test_num 1000 \
-					 > ${dirname}/log_${SHOT}.txt 2>&1"
+						    exp_name tp40 \
+					 > log.txt 2>&1"
 
 echo "finish"
 

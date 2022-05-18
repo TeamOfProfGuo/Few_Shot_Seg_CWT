@@ -1,4 +1,5 @@
 import os
+import shutil
 import torch
 import torch.nn.functional as F
 import yaml
@@ -12,6 +13,27 @@ import numpy as np
 
 A = TypeVar("A")
 B = TypeVar("B")
+
+
+def ensure_path(path, remove=True):
+    if os.path.exists(path):
+        if remove or input('{} exists, remove? ([y]/n): '.format(path)) != 'n':
+            print('remove the existing folder {}'.format(path))
+            shutil.rmtree(path)
+
+    os.makedirs(path)
+
+
+def set_log_path(path):
+    global _log_path
+    _log_path = path
+
+
+def log(obj, filename='log.txt'):
+    print(obj)
+    if _log_path is not None:
+        with open(os.path.join(_log_path, filename), 'a') as f:
+            print(obj, file=f)
 
 
 def setup(
