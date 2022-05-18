@@ -54,7 +54,7 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   rmid: True
-  att_level: al3_tp40
+  att_level: 3
 
 EVALUATION:
   shot: 1
@@ -71,4 +71,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: a
+  exp_name: al3_tp40
