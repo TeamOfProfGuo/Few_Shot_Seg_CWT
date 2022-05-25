@@ -262,6 +262,52 @@ class PSPNet(nn.Module):
         return pred_q_label
 
 
+    def sampling(self, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s = None):
+        bs, C, height, width = fq_fea.size()
+
+        # 基于attention, refine f_q, 并对query img做prediction
+        proj_q = F.normalize(fq_fea.view(bs, -1, height * width), dim=-2)  # [1, 2048, hw]
+        proj_k = F.normalize(fs_fea.view(bs, -1, height * width), dim=-2)  # [1, 2048, hw]
+        proj_q = proj_q.permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
+        sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
+
+        # mask ignored pixels
+        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=fq_fea.shape[-2:], mode='nearest')  # [1,1,h,w]
+        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
+        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
+        sim[s_mask == True] = 0.00001
+
+        # ignore misleading points
+        pd_q_mask0 = pd_q0.argmax(dim=1)
+        q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=fq_fea.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
+        qf_mask = (q_mask != 255.0) * (pd_q_mask0 == 1)  # predicted qry FG
+        qb_mask = (q_mask != 255.0) * (pd_q_mask0 == 0)  # predicted qry BG
+        qf_mask = qf_mask.view(qf_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted FG
+        qb_mask = qb_mask.view(qb_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted BG
+
+        sim_qf = sim[qf_mask].reshape(1, -1, 3600)
+        if sim_qf.numel() > 0:
+            th_qf = torch.quantile(sim_qf.flatten(), 0.8)
+            sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel
+        else:
+            print('------ pred qf mask is empty! ------')
+        sim_qb = sim[qb_mask].reshape(1, -1, 3600)
+        if sim_qb.numel() > 0:
+            th_qb = torch.quantile(sim_qb.flatten(), 0.8)
+            sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
+        else:
+            print('------ pred qb mask is empty! ------')
+        sf_mask = pd_s.argmax(dim=1).view(1, 3600)
+
+        null_mask = torch.zeros([1, 3600], dtype=torch.bool)
+        null_mask = null_mask.cuda() if torch.cuda.is_available() else null_mask
+        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
+        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else null_mask
+        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel() > 0 and sim_qb.numel() > 0 else null_mask
+        ig_mask = ig_mask1 | ig_mask2 | ig_mask3
+
+        return ig_mask
+
     def outer_forward1(self, f_q, f_s, fq_fea, fs_fea, s_label):
         # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
         bs, C, height, width = f_q.size()
