@@ -17,8 +17,8 @@ from .model.transformer import MultiHeadAttentionOne, CrossAttention
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list
-from .util import ensure_path, set_log_path, log
+from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
+from .util import get_mid_feat
 import argparse
 
 
@@ -98,7 +98,6 @@ def main(args: argparse.Namespace) -> None:
     # ======= Transformer =======
     transformer = CrossAttention(n_head=4, dim_k=2048, dim_v=512, d_k=1024, d_v=512, dropout=0.1).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
-    optimizer_meta = get_optimizer(args, [dict(params=param_list, lr=args.trans_lr * args.scale_lr)])
 
     # ========= Data  ==========
     train_loader, train_sampler = get_train_loader(args)
@@ -110,7 +109,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ====== Training  ======
     log('==> Start training')
-    for epoch in range(args.epochs):
+    for epoch in range(1, args.epochs+1):
 
         train_loss_meter = AverageMeter()
         train_iou_meter = AverageMeter()
@@ -119,7 +118,7 @@ def main(args: argparse.Namespace) -> None:
 
         iterable_train_loader = iter(train_loader)
         for i in range(iter_per_epoch):
-            qry_img, q_label, spprt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
+            qry_img, q_label, spt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
 
             if torch.cuda.is_available():
                 spprt_imgs = spprt_imgs.cuda()  # [1, 1, 3, h, w]
@@ -129,33 +128,38 @@ def main(args: argparse.Namespace) -> None:
 
             # ====== Phase 1: Train the binary classifier on support samples ======
 
-            if spprt_imgs.shape[1] == 1:
-                spprt_imgs_reshape = spprt_imgs.squeeze(0).expand(2, 3, args.image_size, args.image_size)
-                s_label_reshape = s_label.squeeze(0).expand(2, args.image_size, args.image_size).long()
-            else:
-                spprt_imgs_reshape = spprt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
-                s_label_reshape = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
+            spt_imgs = spt_imgs.squeeze(0)       # [n_shots, 3, img_size, img_size]
+            s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
             # fine-tune classifier
             model.eval()
             with torch.no_grad():
-                f_s, fs_lst = model.extract_features(spprt_imgs_reshape)
-            model.inner_loop(f_s, s_label_reshape)
+                f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
+            model.inner_loop(f_s, s_label)
 
             # ====== Phase 2: Train the attention to update query score  ======
-            # query score: baseline model vs. attention based
             model.eval()
             with torch.no_grad():
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pd_q0 = model.classifier(f_q)
-                pd_s  = model.classifier(f_s[0:1])
+                pd_s  = model.classifier(f_s)
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            # 基于attention refine pred_q
-            fs_fea = fs_lst[args.att_level-2]  # [2, 2048, 60, 60]
-            fq_fea = fq_lst[args.att_level-2]  # [1, 2048, 60, 60]
-            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1], q_label, pd_q0, pd_s)
-            # cross attention (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
+            # filter out ignore pixels
+            fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
+            fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+            ig_mask = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
+
+            # update f_q using Transformer
+            B, d_k, h, w = fq_fea.shape
+            shot, d_v, _, _  = f_s.shape  # [B*shot, C, h, w]
+            q = fq_fea.view(B, d_k, h*w).permute(0, 2, 1).contiguous()   # [B, N_q, C]
+            k = fs_fea.view(B, shot, d_k, h*w).permute(0, 1, 3, 2).view(B, shot*h*w, d_k).contiguous()
+            v = f_s.view(B, shot, d_v, h*w).permute(0, 1, 3, 2).view(B, shot*h*w, d_v).contiguous()
+            idt = f_q.view(B, d_v, h*w).permute(0, 2, 1).contiguous()
+
+            updated_fq = transformer(q, k, v, s_valid_mask=ig_mask, idt=idt)
+            pred_q = model.classifier(updated_fq.view(B,-1, h, w))
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
@@ -180,17 +184,17 @@ def main(args: argparse.Namespace) -> None:
             IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
             train_iou_meter0.update((IoUf0+IoUb0)/2, 1)
-            log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} gamma {:.4f} gammaG {:.4f} lr {:.4f}'.format(
-                epoch+1, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, model.gamma.item(), model.gamma.grad, optimizer_meta.param_groups[0]['lr']))
+            log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} lr {:.4f}'.format(
+                epoch, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, optimizer_meta.param_groups[0]['lr']))
 
-            if i % 20 == 0:
-                log('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}, gamma {:.4f}'.format(
-                    epoch + 1, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
-                    train_loss_meter.avg, model.gamma.item()))
+            if i % 50 == 0:
+                log('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}'.format(
+                    epoch, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
+                    train_loss_meter.avg))
                 train_iou_meter.reset()
                 train_loss_meter.reset()
 
-                val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model)
+                val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, transformer=transformer)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -229,7 +233,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer)
 
 
-def validate_epoch(args, val_loader, model):
+def validate_epoch(args, val_loader, model, transformer):
     log('==> Start testing')
 
     iter_num = 0
@@ -274,11 +278,22 @@ def validate_epoch(args, val_loader, model):
             pd_q0 = model.classifier(f_q)
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-        # 用layer4 的output来做attention
-        fs_fea = fs_lst[args.att_level-2]  # [1, 2048, 60, 60]
-        fq_fea = fq_lst[args.att_level-2]  # [1, 2048, 60, 60]
-        pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
-        # cross attention: (f_q, f_s, fq_fea, fs_fea, s_label), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
+
+        # filter out ignore pixels
+        fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
+        fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+        ig_mask = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
+
+        # update f_q using Transformer
+        B, d_k, h, w = fq_fea.shape
+        shot, d_v, _, _ = f_s.shape  # [B*shot, C, h, w]
+        q = fq_fea.view(B, d_k, h * w).permute(0, 2, 1).contiguous()  # [B, N_q, C]
+        k = fs_fea.view(B, shot, d_k, h * w).permute(0, 1, 3, 2).view(B, shot * h * w, d_k).contiguous()
+        v = f_s.view(B, shot, d_v, h * w).permute(0, 1, 3, 2).view(B, shot * h * w, d_v).contiguous()
+        idt = f_q.view(B, d_v, h * w).permute(0, 2, 1).contiguous()
+
+        updated_fq = transformer(q, k, v, s_valid_mask=ig_mask, idt=idt)
+        pred_q = model.classifier(updated_fq.view(B, -1, h, w))
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         # IoU and loss

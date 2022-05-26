@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 import os
 import shutil
 import torch
@@ -34,6 +36,24 @@ def log(obj, filename='log.txt'):
     if _log_path is not None:
         with open(os.path.join(_log_path, filename), 'a') as f:
             print(obj, file=f)
+
+
+def get_mid_feat(model, x, layer='4'):   # x: input to model
+    feat_blobs = []
+
+    def hook_feature(module, input, output):
+        feat_blobs.append(output)
+
+    handles = {}
+    handles[4] = model.layer4[2].bn3.register_forward_hook(hook_feature)
+
+    with torch.no_grad():
+        f, f_lst = model.extract_features(x)
+        feat = feat_blobs[-1]                  # 需要输出的feature
+        for k, v in handles.items():
+            handles[k].remove()
+
+    return f, f_lst, [feat]
 
 
 def setup(

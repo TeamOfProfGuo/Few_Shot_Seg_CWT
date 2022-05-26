@@ -99,7 +99,7 @@ class CrossAttention(nn.Module):
         nn.init.xavier_normal_(self.fc.weight)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, q, k, v, s_valid_mask):   # k, v: support pixels, q：query pixels
+    def forward(self, q, k, v, s_valid_mask, idt):   # k, v: support pixels, q：query pixels
         B, N_q, C = q.shape
         N_s = k.size(1)
 
@@ -114,14 +114,16 @@ class CrossAttention(nn.Module):
         if s_valid_mask is not None:
             s_valid_mask = s_valid_mask.unsqueeze(1).repeat(1, self.n_head, 1)  # [B, N_s] ->  [B, nH, N_s]
             s_valid_mask = s_valid_mask.unsqueeze(-2).float()                   # [B, nH, 1, N_s]
-            s_valid_mask = s_valid_mask * -10000.0
-            attn = attn + s_valid_mask.view(-1, 1, N_s)                         # [B*nH, N_q, N_s]
+            s_valid_mask = s_valid_mask.view(-1, 1, N_s) * -10000.0             # [B*nH, 1, N_s]
+            attn = attn + s_valid_mask                                          # [B*nH, N_q, N_s]
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)                          # dropOut on the attention weight!
         output = torch.bmm(attn, v)                        # [B*nH, N_q, d_v]
 
         output = output.view(B, self.n_head, N_q, self.d_v)                # [B, nH, N_q, d_v]
-        output = output.permute(0, 2, 1, 3).contiguous().view(B, N_q, -1)  # [B, N_q, nH, d_v]
+        output = output.permute(0, 2, 1, 3).contiguous().view(B, N_q, -1)  # [B, N_q, nH, d_v] -> [B, N_q, nH*d_v]
 
         output = self.dropout(self.fc(output))                             # [B, N_q, d_v]
+        output = self.layer_norm(output + idt)
         return output
+

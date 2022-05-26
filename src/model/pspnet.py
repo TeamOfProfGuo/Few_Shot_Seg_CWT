@@ -74,14 +74,17 @@ class PSPNet(nn.Module):
         self.use_ppm = use_ppm
         self.m_scale = args.m_scale
         self.bottleneck_dim = args.bottleneck_dim
-        self.rmid = args.get('rmid', False)     # 是否返回中间层
+        self.rmid = args.get('rmid', None)     # 是否返回中间层
         self.args = args
 
+        resnet_kwargs = {}
+        if self.rmid == 'nr':
+            resnet_kwargs['no_relu'] = True
         if args.arch == 'resnet':
             if args.layers == 50:
-                resnet = resnet50(pretrained=args.pretrained)
+                resnet = resnet50(pretrained=args.pretrained, **resnet_kwargs)
             else:
-                resnet = resnet101(pretrained=args.pretrained)
+                resnet = resnet101(pretrained=args.pretrained, **resnet_kwargs)
             self.layer0 = nn.Sequential(
                 resnet.conv1, resnet.bn1, resnet.relu,
                 resnet.conv2, resnet.bn2, resnet.relu,
@@ -148,15 +151,22 @@ class PSPNet(nn.Module):
         x = self.layer1(x)
         x_2 = self.layer2(x)
         x_3 = self.layer3(x_2)
-        x_4 = self.layer4(x_3)
+        if self.rmid == 'nr':
+            x_4, x4_nr = self.layer4(x_3)
+        else:
+            x_4 = self.layer4(x_3)
+
         if self.m_scale:
             x = torch.cat([x_2, x_3], dim=1)
         else:
             x = x_4
         x = self.ppm(x)
         x = self.bottleneck(x)
-        if self.rmid:
+
+        if self.rmid == 'mid' or self.rmid==True:
             return x, [x_2, x_3, x_4]
+        elif self.rmid == 'nr':
+            return x, [x4_nr]
         else:
             return x, []
 
@@ -261,7 +271,6 @@ class PSPNet(nn.Module):
         pred_q_label = self.classifier(out)
         return pred_q_label
 
-
     def sampling(self, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s = None):
         bs, C, height, width = fq_fea.size()
 
@@ -304,7 +313,7 @@ class PSPNet(nn.Module):
         ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
         ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else null_mask
         ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel() > 0 and sim_qb.numel() > 0 else null_mask
-        ig_mask = ig_mask1 | ig_mask2 | ig_mask3
+        ig_mask = ig_mask1 | ig_mask2 | ig_mask3 | s_mask[:,1,:]
 
         return ig_mask
 

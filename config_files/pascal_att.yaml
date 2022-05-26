@@ -27,7 +27,7 @@ TRAIN:
   log_freq : 50
   save_models: True
   cls_lr: 0.0025
-  trans_lr: 0.0001
+  trans_lr: 0.001
   scale_lr: 1.0
   mixup: False
   lr_stepsize: 30
@@ -53,7 +53,7 @@ MODEL:
   temp: 40.0
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
-  rmid: True
+  rmid: nr
   att_level: 3
 
 EVALUATION:
