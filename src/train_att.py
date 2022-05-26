@@ -121,7 +121,7 @@ def main(args: argparse.Namespace) -> None:
             qry_img, q_label, spt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
 
             if torch.cuda.is_available():
-                spprt_imgs = spprt_imgs.cuda()  # [1, 1, 3, h, w]
+                spt_imgs = spt_imgs.cuda()  # [1, 1, 3, h, w]
                 s_label = s_label.cuda()  # [1, 1, h, w]
                 q_label = q_label.cuda()  # [1, h, w]
                 qry_img = qry_img.cuda()  # [1, 3, h, w]
@@ -251,24 +251,24 @@ def validate_epoch(args, val_loader, model, transformer):
 
         iter_num += 1
         try:
-            qry_img, q_label, spprt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
+            qry_img, q_label, spt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
         except:
             iter_loader = iter(val_loader)
-            qry_img, q_label, spprt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
+            qry_img, q_label, spt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
         if torch.cuda.is_available():
-            spprt_imgs = spprt_imgs.cuda()
+            spt_imgs = spt_imgs.cuda()
             s_label = s_label.cuda()
             q_label = q_label.cuda()
             qry_img = qry_img.cuda()
 
         # ====== Phase 1: Train a new binary classifier on support samples. ======
-        spprt_imgs = spprt_imgs.squeeze(0)   # [n_shots, 3, img_size, img_size]
+        spt_imgs = spt_imgs.squeeze(0)   # [n_shots, 3, img_size, img_size]
         s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
         # fine-tune classifier
         model.eval()
         with torch.no_grad():
-            f_s, fs_lst = model.extract_features(spprt_imgs)
+            f_s, fs_lst = model.extract_features(spt_imgs)
         model.inner_loop(f_s, s_label)
 
         # ====== Phase 2: Update query score using attention. ======
