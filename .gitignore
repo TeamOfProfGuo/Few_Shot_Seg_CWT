@@ -1,3 +1,7 @@
+utils/__pychache__/
+*.jpg
+src/.idea/
+src/dataset/__pychache__/
 *.out
 *.pth
 *.pyc
@@ -7,3 +11,4 @@ save/
 pic/
 models/__pychache__/
 .idea/**
+src/__pychache__/
