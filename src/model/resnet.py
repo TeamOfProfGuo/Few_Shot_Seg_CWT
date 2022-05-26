@@ -57,8 +57,9 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, no_relu=False):
         super(Bottleneck, self).__init__()
+        self.no_relu = no_relu
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
@@ -88,16 +89,19 @@ class Bottleneck(nn.Module):
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
-
-        return out
+        if self.no_relu:
+            out_nr = torch.clone(out)
+            return self.relu(out), out_nr
+        else:
+            return self.relu(out)
 
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, deep_base=True):
+    def __init__(self, block, layers, num_classes=1000, deep_base=True, no_relu=False):
         super(ResNet, self).__init__()
         self.deep_base = deep_base
+        self.no_relu = no_relu
         if not self.deep_base:
             self.inplanes = 64
             self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -115,7 +119,7 @@ class ResNet(nn.Module):
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, no_relu=no_relu)
         self.avgpool = nn.AvgPool2d(7, stride=1)
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -126,12 +130,11 @@ class ResNet(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, planes, blocks, stride=1, no_relu=False):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(self.inplanes, planes * block.expansion, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
@@ -139,7 +142,7 @@ class ResNet(nn.Module):
         layers.append(block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+            layers.append(block(self.inplanes, planes, no_relu=(no_relu and i==blocks-1) ))
 
         return nn.Sequential(*layers)
 
@@ -153,7 +156,10 @@ class ResNet(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x)
+        if self.no_relu:
+            x, x_nr = self.layer4(x)
+        else:
+            x = self.layer4(x)
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
