@@ -2,6 +2,7 @@
 
 import os
 import time
+import yaml
 import random
 import numpy as np
 import torch
@@ -42,6 +43,7 @@ def main(args: argparse.Namespace) -> None:
     ensure_path(sv_path)
     set_log_path(path=sv_path)
     log('save_path {}'.format(sv_path))
+    yaml.dump(args, open(os.path.join(sv_path, 'config.yaml'), 'w'))
 
     log(args)
 
@@ -118,28 +120,24 @@ def main(args: argparse.Namespace) -> None:
 
         iterable_train_loader = iter(train_loader)
         for i in range(iter_per_epoch):
-            qry_img, q_label, spprt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
+            qry_img, q_label, spt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
 
             if torch.cuda.is_available():
-                spprt_imgs = spprt_imgs.cuda()  # [1, 1, 3, h, w]
+                spt_imgs = spt_imgs.cuda()  # [1, 1, 3, h, w]
                 s_label = s_label.cuda()  # [1, 1, h, w]
                 q_label = q_label.cuda()  # [1, h, w]
                 qry_img = qry_img.cuda()  # [1, 3, h, w]
 
             # ====== Phase 1: Train the binary classifier on support samples ======
 
-            if spprt_imgs.shape[1] == 1:
-                spprt_imgs_reshape = spprt_imgs.squeeze(0).expand(2, 3, args.image_size, args.image_size)
-                s_label_reshape = s_label.squeeze(0).expand(2, args.image_size, args.image_size).long()
-            else:
-                spprt_imgs_reshape = spprt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
-                s_label_reshape = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
+            spt_imgs = spt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
+            s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
             # fine-tune classifier
             model.eval()
             with torch.no_grad():
-                f_s, fs_lst = model.extract_features(spprt_imgs_reshape)
-            model.inner_loop(f_s, s_label_reshape)
+                f_s, fs_lst = model.extract_features(spt_imgs)
+            model.inner_loop(f_s, s_label)
 
             # ====== Phase 2: Train the attention to update query score  ======
             # query score: baseline model vs. attention based
@@ -151,10 +149,10 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # 基于attention refine pred_q
-            fs_fea = fs_lst[args.att_level-2]  # [2, 2048, 60, 60]
-            fq_fea = fq_lst[args.att_level-2]  # [1, 2048, 60, 60]
-            pred_q = model.outer_forward(f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1], q_label, pd_q0, pd_s)
-            # cross attention (f_q, f_s[0:1], fq_fea, fs_fea[0:1], s_label_reshape[0:1]), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
+            fea_idx = args.rmid-2 if args.rmid in [3, 4] else -1
+            fs_fea = fs_lst[fea_idx]  # [2, 2048, 60, 60]
+            fq_fea = fq_lst[fea_idx]  # [1, 2048, 60, 60]
+            pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
@@ -274,8 +272,9 @@ def validate_epoch(args, val_loader, model):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
         # 用layer4 的output来做attention
-        fs_fea = fs_lst[args.att_level-2]  # [1, 2048, 60, 60]
-        fq_fea = fq_lst[args.att_level-2]  # [1, 2048, 60, 60]
+        fea_idx = args.rmid-2 if args.rmid in [3, 4] else -1
+        fs_fea = fs_lst[fea_idx]  # [1, 2048, 60, 60]
+        fq_fea = fq_lst[fea_idx]  # [1, 2048, 60, 60]
         pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
         # cross attention: (f_q, f_s, fq_fea, fs_fea, s_label), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)

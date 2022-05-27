@@ -53,8 +53,10 @@ MODEL:
   temp: 40.0
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
-  rmid: True
-  att_level: 3
+  rmid: nr
+
+Classifier:
+  dist: cos
 
 EVALUATION:
   shot: 1

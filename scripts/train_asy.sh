@@ -33,8 +33,8 @@ singularity exec --nv \
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
-						    epochs 20 \
-						    exp_name al3_tp40 \
+						    epochs 5 \
+						    exp_name cos_nr4_tp40 \
 					 > log.txt 2>&1"
 
 echo "finish"

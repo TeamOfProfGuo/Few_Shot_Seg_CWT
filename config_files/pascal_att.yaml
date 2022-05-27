@@ -56,6 +56,9 @@ MODEL:
   rmid: nr
   att_level: 3
 
+Classifier:
+  dist: cos
+
 EVALUATION:
   shot: 1
   random_shot: False
