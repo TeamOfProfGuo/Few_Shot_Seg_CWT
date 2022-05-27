@@ -29,7 +29,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    trans_lr 0.001 \
+						    trans_lr 0.01 \
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
