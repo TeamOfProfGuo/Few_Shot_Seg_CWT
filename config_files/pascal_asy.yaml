@@ -56,7 +56,7 @@ MODEL:
   rmid: nr
 
 Classifier:
-  dist: cos
+  dist: cosN
 
 EVALUATION:
   shot: 1

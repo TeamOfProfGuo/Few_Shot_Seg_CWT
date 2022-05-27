@@ -128,8 +128,10 @@ class PSPNet(nn.Module):
 
         if args.get('dist', 'dot') == 'dot':
             self.classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False)
-        else:
+        elif args.get('dist') == 'cos':
             self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr)
+        elif args.get('dist') == 'cosN':  # adaptive weight norm
+            self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, class_wise_norm=True)
 
         self.gamma = nn.Parameter(torch.tensor(0.2))
 
