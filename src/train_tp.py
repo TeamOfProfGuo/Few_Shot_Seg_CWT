@@ -209,7 +209,7 @@ with torch.no_grad():
     f_s, _ = model.extract_features(spprt_imgs_reshape)  # [n_task, c, h, w]   [2, 512, 60, 60]
     # f_s = model.module.extract_features(spprt_imgs_reshape)  # [n_task, c, h, w]
 
-args.adapt_iter = 2
+args.adapt_iter = 200
 for index in range(args.adapt_iter):
     output_support = binary_cls(f_s)  # [2, 2, 60, 60]
     output_support = F.interpolate(
@@ -247,7 +247,10 @@ weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(
 )  # [n_task, 2, c]
 
 # Update the classifier's weights with transformer
+
+q, k, v = weights_cls_reshape, f_q, f_q
 updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [n_task, 2, c]
+
 
 f_q_reshape = f_q.view(args.batch_size, args.bottleneck_dim, -1)  # [n_task, c, hw]
 
@@ -265,6 +268,9 @@ loss_q = criterion(pred_q, q_label.long())
 optimizer_trans.zero_grad()
 loss_q.backward()
 optimizer_trans.step()
+
+transformer.w_qkvs.weight.grad
+transformer.fc.weight.grad
 
 # Print loss and mIoU
 intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)

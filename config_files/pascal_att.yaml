@@ -54,6 +54,8 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   rmid: nr
+  trans_tp: 0.05
+  trans_vn: False
 
 Classifier:
   dist: cosN

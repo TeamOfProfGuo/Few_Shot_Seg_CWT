@@ -96,7 +96,7 @@ def main(args: argparse.Namespace) -> None:
             param.requires_grad = False
 
     # ======= Transformer =======
-    transformer = CrossAttention(n_head=4, dim_k=2048, dim_v=512, d_k=1024, d_v=512, dropout=0.1).cuda()
+    transformer = CrossAttention(n_head=4, dim_k=2048, dim_v=512, d_k=1024, d_v=512, dropout=0.1, temp=args.trans_tp, trans_vn=args.trans_vn).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
 
     # ========= Data  ==========
@@ -187,7 +187,6 @@ def main(args: argparse.Namespace) -> None:
             if i%100==0:
                 log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, optimizer_meta.param_groups[0]['lr']))
-
 
         log('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}'.format(
             epoch, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,

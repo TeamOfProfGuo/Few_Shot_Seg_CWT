@@ -81,18 +81,19 @@ class MultiHeadAttentionOne(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, n_head, dim_k, dim_v, d_k, d_v, dropout=0.1):
+    def __init__(self, n_head, dim_k, dim_v, d_k, d_v, dropout=0.1, temp=1.0, trans_vn=False):
         super(CrossAttention, self).__init__()
         self.n_head = n_head   # 4
         self.d_k = d_k         # 512
         self.d_v = d_v         # 512
+        self.trans_vn = trans_vn
 
         self.qk_fc = nn.Linear(dim_k, n_head * d_k, bias=False)
         self.v_fc = nn.Linear(dim_v, n_head * d_v, bias=False)
-        nn.init.normal_(self.qk_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_k + d_k)))
-        nn.init.normal_(self.v_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_v + d_v)))
+        #nn.init.normal_(self.qk_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_k + d_k)))
+        #nn.init.normal_(self.v_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_v + d_v)))
 
-        self.temperature = 1.0/np.power(d_k, 0.5) # np.power(d_k, 0.5)
+        self.temperature = temp # np.power(d_k, 0.5)
         self.layer_norm = nn.LayerNorm(d_v)
 
         self.fc = nn.Linear(n_head * d_v, d_v)
@@ -103,6 +104,10 @@ class CrossAttention(nn.Module):
         B, N_q, C = q.shape
         N_s = k.size(1)
 
+        if self.trans_vn:
+            v = F.normalize(v, dim=-1)
+            idt = F.normalize(idt, dim=-1)
+
         q = self.qk_fc(q).reshape(B, N_q, self.n_head, self.d_k).permute(0, 2, 1, 3)  #[B, N, nH, d_k] -> [B, nH, N, d_k]
         k = self.qk_fc(k).reshape(B, N_s, self.n_head, self.d_k).permute(0, 2, 1, 3)
         v = self.v_fc(v).reshape(B, N_s, self.n_head, self.d_v).permute(0, 2, 1, 3)
@@ -110,7 +115,7 @@ class CrossAttention(nn.Module):
         k = k.contiguous().view(-1, N_s, self.d_k)
         v = v.contiguous().view(-1, N_s, self.d_v)
 
-        attn = torch.bmm(q, k.transpose(1, 2)) / self.temperature   # [B*nH, N_q, N_s]
+        attn = torch.bmm(q, k.transpose(1, 2)) * self.temperature   # [B*nH, N_q, N_s]
         if s_valid_mask is not None:
             s_valid_mask = s_valid_mask.unsqueeze(1).repeat(1, self.n_head, 1)  # [B, N_s] ->  [B, nH, N_s]
             s_valid_mask = s_valid_mask.unsqueeze(-2).float()                   # [B, nH, 1, N_s]
