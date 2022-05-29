@@ -29,13 +29,13 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    trans_lr 0.2 \
+						    trans_lr 2 \
 						    trans_tp 0.05\
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 20 \
-						    exp_name cosN05_mha \
+						    exp_name cosN05_lr2_mha \
 					 > log.txt 2>&1"
 
 echo "finish"
