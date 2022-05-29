@@ -92,7 +92,7 @@ class CrossAttention(nn.Module):
         nn.init.normal_(self.qk_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_k + d_k)))
         nn.init.normal_(self.v_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_v + d_v)))
 
-        self.temperature=np.power(d_k, 0.5)
+        self.temperature = 1.0  # np.power(d_k, 0.5)
         self.layer_norm = nn.LayerNorm(d_v)
 
         self.fc = nn.Linear(n_head * d_v, d_v)
