@@ -35,7 +35,7 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 5 \
-						    exp_name oooo_nr4_tp40 \
+						    exp_name Rooo_nr4_tp40 \
 					 > log.txt 2>&1"
 
 echo "finish"
