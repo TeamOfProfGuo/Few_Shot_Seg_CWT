@@ -29,7 +29,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    dist cos\
+						    dist cosN\
 						    cls_type ooo\
 						    cls_lr 0.1 \
 						    batch_size 1 \
