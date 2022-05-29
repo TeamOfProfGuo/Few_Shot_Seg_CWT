@@ -30,12 +30,12 @@ singularity exec --nv \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
 						    dist cos\
-						    cls_type nbo\
+						    cls_type nbt\
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 5 \
-						    exp_name onbo_nr4_tp40 \
+						    exp_name onbt_nr4_tp40 \
 					 > log.txt 2>&1"
 
 echo "finish"
