@@ -360,6 +360,7 @@ def parse_param_coscls(cls_type):
     weight_norm_dt = {'n': True, '0': False, 'o': False}
     bias_dt = {'b': True, '0': False, 'o': False}
     temp_dt = {'t': True, '0': False, 'o': False}
+    print('weight norm {}, bias {}, temp {}'.format( weight_norm_dt[cls_type[0]], bias_dt[cls_type[1]], temp_dt[cls_type[2]] ))
     return weight_norm_dt[cls_type[0]], bias_dt[cls_type[1]], temp_dt[cls_type[2]]
 
 

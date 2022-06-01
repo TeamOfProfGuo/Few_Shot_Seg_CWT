@@ -29,7 +29,7 @@ singularity exec --nv \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
 						    dist cos\
-						    cls_type onot\
+						    cls_type not\
 						    cls_lr 0.1 \
 						    batch_size_val 1 \
 						    exp_name pretrain_onot \
