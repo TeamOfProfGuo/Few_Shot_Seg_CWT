@@ -131,7 +131,7 @@ def main(args: argparse.Namespace) -> None:
                 log('iter {}/{}: loss {:.2f}, running loss {:.2f}, Acc {:.4f}, mAcc {:.4f}, mIoU {:.4f}'.format(
                     i, epoch, loss.item(), loss_meter.avg, allAcc, mAcc, mIoU))
 
-        log('============ Epoch {}=============: running loss {:.2f}'.format(loss_meter.avg))
+        log('============ Epoch {}=============: running loss {:.2f}'.format(epoch, loss_meter.avg))
         writer.add_scalar('train_loss', loss_meter.avg, epoch)
         writer.add_scalar("mean_iou/train", mIoU, epoch)
         writer.add_scalar("pixel accuracy/train", allAcc, epoch)
