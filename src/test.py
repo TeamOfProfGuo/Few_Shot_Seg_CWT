@@ -252,7 +252,7 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
     # ========== Metrics initialization  ==========
 
     H, W = args.image_size, args.image_size
-    h, w = model.feature_res # (53, 53)
+    h, w = (60, 60) # model.feature_res # (53, 53)
 
     runtimes = torch.zeros(args.n_runs)
     val_IoUs = np.zeros(args.n_runs)
