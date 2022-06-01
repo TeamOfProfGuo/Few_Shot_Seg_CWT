@@ -27,7 +27,7 @@ TRAIN:
   log_freq : 50
   save_models: True
   lr: 0.0025
-  cls_lr: 0.0025
+  cls_lr: 0.1
   scale_lr: 2.0
   mixup: False
   lr_stepsize: 30
@@ -64,9 +64,9 @@ EVALUATION:
 
 CLASSIFIER:
   dist: cos
-  cls_type: onot
+  cls_type: not
   adapt_iter: 200
 
 
 EXPERIMENT:
-  exp_name: al3_tp40
+  exp_name: pretrain_onot_debug

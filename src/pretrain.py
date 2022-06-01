@@ -26,6 +26,7 @@ from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_mode
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list
 from .util import ensure_path, set_log_path, log
 import argparse
+import pdb
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,6 +138,7 @@ def main(args: argparse.Namespace) -> None:
         writer.add_scalar("pixel accuracy/train", allAcc, epoch)
         loss_meter.reset()
 
+        pdb.set_trace()
         val_Iou, val_loss = validate_fn(args=args, val_loader=val_loader, model=model, use_callback=False)
         writer.add_scalar("mean_iou/val", val_Iou, epoch)
         writer.add_scalar("pixel accuracy/val", val_loss, epoch)
