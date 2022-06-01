@@ -24,7 +24,7 @@ singularity exec --nv \
             --overlay /scratch/lg154/python36/python36.ext3:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_asy --config config_files/${DATA}_pretrain.yaml \
+            python -m src.pretrain --config config_files/${DATA}_pretrain.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
