@@ -293,7 +293,7 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
                     f_s, _ = model.extract_features(spprt_imgs.squeeze(0))
 
                 # ====== Phase 1: Train a new binary classifier on support samples. ======
-                binary_classifier = get_classifier(args, num_classes=2)
+                binary_classifier = get_classifier(args, num_classes=2).cuda()
                 optimizer = optim.SGD(binary_classifier.parameters(), lr=args.cls_lr)
 
                 # Dynamic class weights
