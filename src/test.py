@@ -15,11 +15,11 @@ from collections import defaultdict
 from .dataset.dataset import get_val_loader
 from .util import AverageMeter, batch_intersectionAndUnionGPU, get_model_dir, get_model_dir_trans
 from .util import find_free_port, setup, cleanup, to_one_hot, intersectionAndUnionGPU
-from .model.pspnet import get_model
+from .model.pspnet import get_model, get_classifier
 from .model.transformer import MultiHeadAttentionOne
 import torch.distributed as dist
 from tqdm import tqdm
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list
+from .util import load_cfg_from_cfg_file, merge_cfg_from_list, log
 import argparse
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
@@ -100,12 +100,10 @@ def main_worker(args: argparse.Namespace) -> None:
     )
 
 
-def validate_transformer(
-        args: argparse.Namespace,
-        val_loader: torch.utils.data.DataLoader,
-        model: DDP,
-        transformer: DDP
-) -> Tuple[torch.tensor, torch.tensor]:
+def validate_transformer(args: argparse.Namespace,
+                         val_loader: torch.utils.data.DataLoader,
+                         model: DDP,
+                         transformer: DDP) -> Tuple[torch.tensor, torch.tensor]:
 
     print('==> Start testing')
 
@@ -242,6 +240,126 @@ def validate_transformer(
 
     return val_IoUs.mean(), val_losses.mean()
 
+
+def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.DataLoader,
+                      model: DDP,  use_callback: bool,) -> Tuple[torch.tensor, torch.tensor]:
+
+    log('==> Start testing')
+
+    model.eval()
+    nb_episodes = int(args.test_num / args.batch_size_val)
+
+    # ========== Metrics initialization  ==========
+
+    H, W = args.image_size, args.image_size
+    h, w = model.feature_res # (53, 53)
+
+    runtimes = torch.zeros(args.n_runs)
+    val_IoUs = np.zeros(args.n_runs)
+    val_losses = np.zeros(args.n_runs)
+
+    # ========== Perform the runs  ==========
+    for run in range(args.n_runs):
+
+        # =============== Initialize the metric dictionaries ===============
+        loss_meter = AverageMeter()
+        iter_num, runtime = 0, 0
+        cls_intersection = defaultdict(int)  # Default value is 0
+        cls_union = defaultdict(int)
+        IoU = defaultdict(int)
+
+        # =============== episode = group of tasks ===============
+        for e in range(nb_episodes):
+            logits_q = torch.zeros(args.batch_size_val, 1, args.num_classes_tr, h, w)
+            gt_q = 255 * torch.ones(args.batch_size_val, 1, args.image_size, args.image_size).long()
+            classes = []  # All classes considered in the tasks
+
+            # =========== Generate tasks and extract features for each task ===============
+            for i in range(args.batch_size_val):
+                try:
+                    qry_img, q_label, spprt_imgs, s_label, subcls, _, _ = iter_loader.next()
+                except:
+                    iter_loader = iter(val_loader)
+                    qry_img, q_label, spprt_imgs, s_label, subcls, _, _ = iter_loader.next()
+                iter_num += 1
+
+                if torch.cuda.is_available():
+                    q_label = q_label.cuda()
+                    spprt_imgs = spprt_imgs.cuda()
+                    s_label = s_label.cuda()
+                    qry_img = qry_img.cuda()
+
+                with torch.no_grad():
+                    f_s, _ = model.extract_features(spprt_imgs.squeeze(0))
+
+                # ====== Phase 1: Train a new binary classifier on support samples. ======
+                binary_classifier = get_classifier(args, num_classes=2)
+                optimizer = optim.SGD(binary_classifier.parameters(), lr=args.cls_lr)
+
+                # Dynamic class weights
+                s_label_arr = s_label.cpu().numpy().copy()  # [n_task, n_shots, img_size, img_size]
+                back_pix = np.where(s_label_arr == 0)
+                target_pix = np.where(s_label_arr == 1)
+
+                criterion = nn.CrossEntropyLoss(
+                    weight=torch.tensor([1.0, len(back_pix[0]) / len(target_pix[0])]).cuda(),
+                    ignore_index=255)
+
+                for index in range(args.adapt_iter):
+                    output_support = binary_classifier(f_s)
+                    output_support = F.interpolate(output_support, size=s_label.size()[2:], mode='bilinear', align_corners=True)
+                    s_loss = criterion(output_support, s_label.squeeze(0))
+                    optimizer.zero_grad()
+                    s_loss.backward()
+                    optimizer.step()
+
+                # ====== Phase 2: run the model on query set. ======
+                with torch.no_grad():
+                    f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
+                    pd_q = model.classifier(f_q)
+
+                logits_q[i] = pd_q.detach()  # [1 batch_size, 2 channel, 60, 60] 其实一个batch只有一个obs, i=0
+                gt_q[i, 0] = q_label  # [1 batch_size, 1 channel, 473, 473]
+                classes.append([class_.item() for class_ in subcls])
+
+            # ================== metrics ==================
+            logits = F.interpolate(logits_q.squeeze(1), size=(H, W), mode='bilinear', align_corners=True).detach()
+            intersection, union, _ = batch_intersectionAndUnionGPU(logits.unsqueeze(1), gt_q, 2)
+            intersection, union = intersection.cpu(), union.cpu()
+
+            criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
+            loss = criterion_standard(logits, gt_q.squeeze(1))
+            loss_meter.update(loss.item())
+            for i, task_classes in enumerate(classes):
+                for j, class_ in enumerate(task_classes):
+                    cls_intersection[class_] += intersection[i, 0, j + 1]  # Do not count background
+                    cls_union[class_] += union[i, 0, j + 1]
+
+            for class_ in cls_union:
+                IoU[class_] = cls_intersection[class_] / (cls_union[class_] + 1e-10)
+
+            if (iter_num % 200 == 0):
+                mIoU = np.mean([IoU[i] for i in IoU])  # mIoU across cls
+                log('Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                    iter_num, args.test_num, mIoU, loss_meter=loss_meter))
+
+        # ================== summarize each run ==================
+        mIoU = np.mean(list(IoU.values()))
+        log('mIoU---Val result: mIoU {:.4f}.'.format(mIoU))
+        for class_ in cls_union:
+            log("Class {} : {:.4f}".format(class_, IoU[class_]))
+
+        val_IoUs[run] = mIoU
+        val_losses[run] = loss_meter.avg
+
+    log('Average mIoU over {} runs --- {:.4f}.'.format(args.n_runs, val_IoUs.mean()))
+    log('Average runtime / run --- {:.4f}.'.format(runtimes.mean()))
+
+    return val_IoUs.mean(), val_losses.mean()
+
+
+def standard_validate():
+    pass
 
 if __name__ == "__main__":
     args = parse_args()

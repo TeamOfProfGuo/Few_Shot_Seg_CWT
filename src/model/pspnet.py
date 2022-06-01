@@ -362,3 +362,15 @@ def parse_param_coscls(cls_type):
     temp_dt = {'t': True, '0': False, 'o': False}
     return weight_norm_dt[cls_type[0]], bias_dt[cls_type[1]], temp_dt[cls_type[2]]
 
+
+def get_classifier(args, num_classes=None):
+    if num_classes is None:
+        num_classes = args.num_classes_tr
+    in_dim = args.bottleneck_dim
+
+    if args.get('dist', 'dot') == 'dot':
+        return nn.Conv2d(in_dim, num_classes, kernel_size=1, bias=False)
+    elif args.get('dist') == 'cos':
+        return CosCls(in_dim=in_dim, n_classes=num_classes, WeightNormR=False, cls_type=args.cls_type)
+    elif args.get('dist') == 'cosN':  # adaptive weight norm
+        return CosCls(in_dim=in_dim, n_classes=num_classes, WeightNormR=True,  cls_type=args.cls_type)

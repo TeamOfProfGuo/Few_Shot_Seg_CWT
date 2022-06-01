@@ -13,7 +13,7 @@ from typing import List
 from torch.utils.data.distributed import DistributedSampler
 
 
-def get_train_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
+def get_train_loader(args, episodic=True, return_path=False):
     """
         Build the train loader. This is a episodic loader.
     """
@@ -42,14 +42,14 @@ def get_train_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
     class_list = split_classes[args.train_name][args.train_split]['train']   # list of all meta train class labels
 
     # ====== Build loader ======
-    train_data = EpisodicData(
-        mode_train=True, transform=train_transform, class_list=class_list, args=args
-    )
-
-    # if args.distributed:
-    #     world_size = torch.distributed.get_world_size()
-    # train_sampler = DistributedSampler(train_data) if args.distributed else None
-    # batch_size = int(args.batch_size / world_size) if args.distributed else args.batch_size
+    if episodic:
+        train_data = EpisodicData(
+            mode_train=True, transform=train_transform, class_list=class_list, args=args
+        )
+    else:
+        train_data = StandardData(transform=train_transform, class_list=class_list,
+                                  return_paths=return_path,  data_list_path=args.train_list,
+                                  args=args)
 
     train_loader = torch.utils.data.DataLoader(
         train_data,
@@ -58,8 +58,7 @@ def get_train_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
         num_workers=args.workers,
         pin_memory=True,
         sampler=None,
-        drop_last=True
-    )
+        drop_last=True)
     return train_loader, None
 
 
@@ -98,6 +97,66 @@ def get_val_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
     )
 
     return val_loader, val_transform
+
+
+class StandardData(Dataset):
+    def __init__(self, args: argparse.Namespace,
+                 transform: transform.Compose,
+                 data_list_path: str,
+                 class_list: List[int],
+                 return_paths: bool):
+        self.data_root = args.data_root
+        self.class_list = class_list
+        self.data_list, _ = make_dataset(args.data_root, data_list_path, class_list)
+        self.transform = transform
+        self.return_paths = return_paths
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, index):
+
+        image_path, label_path = self.data_list[index]
+        image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = np.float32(image)
+        label = cv2.imread(label_path, cv2.IMREAD_GRAYSCALE)
+
+        if image.shape[0] != label.shape[0] or image.shape[1] != label.shape[1]:
+            raise (RuntimeError("Query Image & label shape mismatch: " + image_path + " " + label_path + "\n"))
+        label_class = np.unique(label).tolist()
+        if 0 in label_class:
+            label_class.remove(0)
+        if 255 in label_class:
+            label_class.remove(255)
+        new_label_class = []
+        undesired_class = []
+        for c in label_class:
+            if c in self.class_list:
+                new_label_class.append(c)
+            else:
+                undesired_class.append(c)
+        label_class = new_label_class
+        assert len(label_class) > 0
+
+        new_label = np.zeros_like(label)  # background
+        for lab in label_class:
+            indexes = np.where(label == lab)
+            new_label[indexes[0], indexes[1]] = self.class_list.index(lab) + 1  # Add 1 because class 0 is for bg
+        for lab in undesired_class:
+            indexes = np.where(label == lab)
+            new_label[indexes[0], indexes[1]] = 255
+
+        ignore_pix = np.where(new_label == 255)
+        new_label[ignore_pix[0], ignore_pix[1]] = 255
+
+        if self.transform is not None:
+            image, new_label = self.transform(image, new_label)
+        if self.return_paths:
+            return image, new_label, image_path, label_path
+        else:
+            return image, new_label
+
 
 
 class EpisodicData(Dataset):
