@@ -64,7 +64,7 @@ EVALUATION:
 
 CLASSIFIER:
   dist: cos
-  cls_type: onob
+  cls_type: onot
   adapt_iter: 200
 
 
