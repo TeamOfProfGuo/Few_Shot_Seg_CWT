@@ -134,7 +134,7 @@ def validate_transformer(args: argparse.Namespace,
 
         for e in range(nb_episodes):
             t0 = time.time()
-            logits_q = torch.zeros(args.batch_size_val, 1, args.num_classes_tr, h, w)
+            logits_q = torch.zeros(args.batch_size_val, 1, 2, h, w)
             gt_q = 255 * torch.ones(args.batch_size_val, 1, args.image_size,args.image_size).long()
             classes = []  # All classes considered in the tasks
 
@@ -270,7 +270,7 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
 
         # =============== episode = group of tasks ===============
         for e in range(nb_episodes):
-            logits_q = torch.zeros(args.batch_size_val, 1, args.num_classes_tr, h, w)
+            logits_q = torch.zeros(args.batch_size_val, 1, 2, h, w)
             gt_q = 255 * torch.ones(args.batch_size_val, 1, args.image_size, args.image_size).long()
             classes = []  # All classes considered in the tasks
 
@@ -316,7 +316,7 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
                 # ====== Phase 2: run the model on query set. ======
                 with torch.no_grad():
                     f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
-                    pd_q = model.classifier(f_q)
+                    pd_q = binary_classifier(f_q)
 
                 logits_q[i] = pd_q.detach()  # [1 batch_size, 2 channel, 60, 60] 其实一个batch只有一个obs, i=0
                 gt_q[i, 0] = q_label  # [1 batch_size, 1 channel, 473, 473]
