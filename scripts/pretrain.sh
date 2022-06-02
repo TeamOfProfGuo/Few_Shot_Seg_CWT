@@ -28,11 +28,11 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    dist cos\
-						    cls_type not\
+						    dist dot\
+
 						    cls_lr 0.1 \
 						    batch_size_val 1 \
-						    exp_name pretrain_onot \
+						    exp_name pretrain \
 					 > log.txt 2>&1"
 
 echo "finish"
