@@ -106,15 +106,15 @@ class CrossAttention(nn.Module):
             v = F.normalize(v, dim=-1)
             idt = F.normalize(idt, dim=-1)
 
+        q = self.layer_norm_q(q)
+        k = self.layer_norm_k(k)
+
         q = self.qk_fc(q).reshape(B, N_q, self.n_head, C//self.n_head).permute(0, 2, 1, 3)  #[B, N, nH, d_k] -> [B, nH, N, d_k]
         k = self.qk_fc(k).reshape(B, N_s, self.n_head, C//self.n_head).permute(0, 2, 1, 3)
         v = self.v_fc(v).reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
         q = q.contiguous().view(B*self.n_head, N_q, -1)  # [B*nH, N, d_k]
         k = k.contiguous().view(B*self.n_head, N_s, -1)
         v = v.contiguous().view(B*self.n_head, N_s, -1)
-
-        q = self.layer_norm_q(q)
-        k = self.layer_norm_k(k)
 
         attn = torch.bmm(q, k.transpose(1, 2)) * self.temperature   # [B*nH, N_q, N_s]
         if s_valid_mask is not None:
@@ -135,8 +135,8 @@ class CrossAttention(nn.Module):
 
 
 class MHA(nn.Module):
-    def __init__(self, n_head, dim, dim_v, qkv_bias=False, qk_scale=None, proj_drop=0.1, attn_drop=0.1,
-                 norm_layer=nn.LayerNorm):
+    def __init__(self, n_head, dim, dim_v, ln=True, fv=True, fc=True, qkv_bias=False, qk_scale=None,
+                 proj_drop=0.1, attn_drop=0.1, norm_layer=nn.LayerNorm):
         super().__init__()
         self.norm1_q = norm_layer(dim)
         self.norm1_k = norm_layer(dim)
@@ -147,9 +147,9 @@ class MHA(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
 
         self.qk_fc = nn.Linear(dim, dim, bias=qkv_bias)
-        self.qk_fc.weight.data.copy_(torch.eye(dim, dim) + torch.randn(dim, dim) * 0.001)
-        self.v_fc = nn.Linear(dim_v, dim_v, bias=qkv_bias)
-        self.proj = nn.Linear(dim_v, dim_v)
+        # self.qk_fc.weight.data.copy_(torch.eye(dim, dim) + torch.randn(dim, dim) * 0.001)
+        self.v_fc = nn.Linear(dim_v, dim_v, bias=qkv_bias) if (fv=='fv' or fv==True) else nn.Identity()
+        self.proj = nn.Linear(dim_v, dim_v) if (fc=='fc' or fc==True) else nn.Identity()
 
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -163,14 +163,13 @@ class MHA(nn.Module):
 
         q = self.qk_fc(q).reshape(B, N_q, self.n_head, C//self.n_head).permute(0, 2, 1, 3)  # [B, N, nH, d] -> [B, nH, N, d_k]
         k = self.qk_fc(k).reshape(B, N_s, self.n_head, C//self.n_head).permute(0, 2, 1, 3)
-        # v = self.v_fc(v).reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
-        v = v.reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
+        v = self.v_fc(v).reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale    # [B, nH, N_q, N_s]
         if s_valid_mask is not None:
             s_valid_mask = s_valid_mask.unsqueeze(1).repeat(1, self.n_head, 1)  # [B, N_s] ->  [B, nH, N_s]
             s_valid_mask = s_valid_mask.unsqueeze(-2).float() * (-1000.0)       # [B, nH, 1, N_s]
-            attn = attn + s_valid_mask                                          # [B*nH, N_q, N_s]
+            attn = attn + s_valid_mask                                          # [B, nH, N_q, N_s]
 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
@@ -179,7 +178,7 @@ class MHA(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
 
-        output = x if idt is None else x+0.2*idt
+        output = x + idt
         return output, attn
 
 
