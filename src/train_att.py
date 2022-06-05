@@ -101,8 +101,8 @@ def main(args: argparse.Namespace) -> None:
         trans_name, ln, fv, fc = args.trans_type.split('_')
         transformer = transformer_dt[trans_name.upper()](n_head=4, dim=2048, dim_v=512, ln=ln, fv=fv, fc=fc).cuda()
     else:
-        trans_name, vn, mode = args.trans_type.split('_')
-        transformer = transformer_dt[trans_name.upper()](n_head=1, dim=2048, dim_v=512, v_norm=vn, mode=mode).cuda()
+        trans_name, vn, mode, sc = args.trans_type.split('_')
+        transformer = transformer_dt[trans_name.upper()](n_head=1, dim=2048, dim_v=512, v_norm=vn, mode=mode, scale_att=sc).cuda()
 
     optimizer_meta = get_optimizer(args, [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
 

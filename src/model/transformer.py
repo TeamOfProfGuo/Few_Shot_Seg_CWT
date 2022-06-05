@@ -183,7 +183,7 @@ class MHA(nn.Module):
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, n_head=1, dim=2048, dim_v=512, scale_att=10.0, v_norm=False, mode='l'):
+    def __init__(self, n_head=1, dim=2048, dim_v=512, v_norm=False, mode='l', scale_att='sc',):
         super().__init__()
         self.dim = dim
         self.mode = mode
@@ -192,9 +192,12 @@ class AttentionBlock(nn.Module):
         self.qk_fc.weight.data.copy_(torch.eye(dim, dim) + torch.randn(dim, dim)*0.001)
         self.qk_fc.bias.data.zero_()
 
-        self.scale_att = nn.Parameter(torch.FloatTensor(1).fill_(scale_att), requires_grad=True)
+        if scale_att == 'sc':
+            self.scale_att = nn.Parameter(torch.FloatTensor(1).fill_(20.0), requires_grad=True)
+        else:
+            self.scale_att = 20.0
 
-        self.att_wt = LinearDiag(dim_v, mode=mode)
+        self.att_wt = LinearDiag(dim_v, mode=mode, wt=0.2)
         self.org_wt = LinearDiag(dim_v, mode=mode)
 
     def forward(self, k, v, q, idt, s_valid_mask):
@@ -222,12 +225,12 @@ class AttentionBlock(nn.Module):
 
 
 class LinearDiag(nn.Module):
-    def __init__(self, num_features, mode='l', bias=False):
+    def __init__(self, num_features, mode='l', wt=1.0, bias=False):
         super(LinearDiag, self).__init__()
         if mode == 'l':
-            self.weight = nn.Parameter(torch.tensor(1.0))
+            self.weight = nn.Parameter(torch.tensor(wt))
         elif mode == 'ld':
-            weight = torch.FloatTensor(num_features).fill_(1)  # initialize to the identity transform
+            weight = torch.FloatTensor(num_features).fill_(wt)  # initialize to the identity transform
             self.weight = nn.Parameter(weight, requires_grad=True)
 
         if bias:
