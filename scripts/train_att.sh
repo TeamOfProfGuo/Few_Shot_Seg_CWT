@@ -34,7 +34,7 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 20 \
-						    exp_name CA_ln_fv_fc \
+						    exp_name AB_vn_ld \
 					 > log.txt 2>&1"
 
 echo "finish"

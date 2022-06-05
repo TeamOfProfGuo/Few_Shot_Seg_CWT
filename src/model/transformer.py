@@ -183,11 +183,11 @@ class MHA(nn.Module):
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, dim, dim_v, scale_att=10.0, mode='l', v_norm=False):
+    def __init__(self, n_head=1, dim=2048, dim_v=512, scale_att=10.0, vn=False, mode='l'):
         super().__init__()
         self.dim = dim
         self.mode = mode
-        self.v_norm = v_norm
+        self.v_norm = vn
         self.qk_fc = nn.Linear(dim, dim)
         self.qk_fc.weight.data.copy_(torch.eye(dim, dim) + torch.randn(dim, dim)*0.001)
         self.qk_fc.bias.data.zero_()
@@ -201,7 +201,7 @@ class AttentionBlock(nn.Module):
         B, N_q, C = q.shape
         B, N_s, D = v.shape
 
-        if self.v_norm:
+        if self.v_norm is True or self.v_norm == 'vn':
             v = F.normalize(v, p=2, dim=-1)
             fq = F.normalize(fq, p=2, dim=-1)
 
