@@ -195,6 +195,23 @@ def main(args: argparse.Namespace) -> None:
             if i%100==0:
                 log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, optimizer_meta.param_groups[0]['lr']))
+            if i%900==0:
+                val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model,transformer=transformer)
+
+                # Model selection
+                if val_Iou.item() > max_val_mIoU:
+                    max_val_mIoU = val_Iou.item()
+
+                    filename_transformer = os.path.join(sv_path, f'best.pth')
+
+                    if args.save_models:
+                        log('Saving checkpoint to: ' + filename_transformer)
+                        torch.save({'epoch': epoch,
+                                    'state_dict': model.state_dict(),
+                                    'optimizer': optimizer_meta.state_dict()},
+                                   filename_transformer)
+
+                log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
         log('========Epoch {}========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}'.format(
             epoch, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
@@ -202,22 +219,6 @@ def main(args: argparse.Namespace) -> None:
         train_iou_meter.reset()
         train_loss_meter.reset()
 
-        val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, transformer=transformer)
-
-        # Model selection
-        if val_Iou.item() > max_val_mIoU:
-            max_val_mIoU = val_Iou.item()
-
-            filename_transformer = os.path.join(sv_path, f'best.pth')
-
-            if args.save_models:
-                log('Saving checkpoint to: ' + filename_transformer)
-                torch.save( {'epoch': epoch,
-                             'state_dict': model.state_dict(),
-                             'optimizer': optimizer_meta.state_dict()},
-                            filename_transformer)
-
-        log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
                 # For debugging
                 # if i%50 == 0:
