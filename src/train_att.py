@@ -13,7 +13,7 @@ import torch.utils.data
 import torch.optim as optim
 from collections import defaultdict
 from .model.pspnet import get_model
-from .model.transformer import MultiHeadAttentionOne, CrossAttention
+from .model.transformer import MultiHeadAttentionOne, CrossAttention, MHA, AttentionBlock
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
@@ -21,6 +21,7 @@ from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_
 from .util import get_mid_feat
 import argparse
 
+transformer_dt = {'CA': CrossAttention, 'MH': MHA, 'AB': AttentionBlock}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
@@ -96,7 +97,8 @@ def main(args: argparse.Namespace) -> None:
             param.requires_grad = False
 
     # ======= Transformer =======
-    transformer = CrossAttention(n_head=4, dim_k=2048, dim_v=512, d_k=1024, d_v=512, dropout=0.1, temp=args.trans_tp, trans_vn=args.trans_vn).cuda()
+    trans_name, ln, fv, fc = args.trans_type.split('_')
+    transformer = transformer_dt(trans_name.upper())(n_head=4, dim=2048, dim_v=512, ln=ln, fv=fv, fc=fc).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
 
     # ========= Data  ==========
@@ -152,14 +154,15 @@ def main(args: argparse.Namespace) -> None:
 
             # update f_q using Transformer
             B, d_k, h, w = fq_fea.shape
-            shot, d_v, _, _  = f_s.shape  # [B*shot, C, h, w]
+            shot, d_v, _, _ = f_s.shape  # [B*shot, C, h, w]
             q = fq_fea.view(B, d_k, h*w).permute(0, 2, 1).contiguous()   # [B, N_q, C]
             k = fs_fea.view(B, shot, d_k, h*w).permute(0, 1, 3, 2).view(B, shot*h*w, d_k).contiguous()
             v = f_s.view(B, shot, d_v, h*w).permute(0, 1, 3, 2).view(B, shot*h*w, d_v).contiguous()
             idt = f_q.view(B, d_v, h*w).permute(0, 2, 1).contiguous()
 
-            updated_fq = transformer(q, k, v, s_valid_mask=ig_mask, idt=idt)
-            pred_q = model.classifier(updated_fq.view(B,-1, h, w))
+            updated_fq, _ = transformer(k, v, q, idt=idt, s_valid_mask=ig_mask)  # [B, N_q, d_v]
+            updated_fq = updated_fq.permute(0, 2, 1).view(B, -1, h, w)
+            pred_q = model.classifier(updated_fq)   # [B, 2, h, w]
             pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
@@ -292,8 +295,9 @@ def validate_epoch(args, val_loader, model, transformer):
         v = f_s.view(B, shot, d_v, h * w).permute(0, 1, 3, 2).view(B, shot * h * w, d_v).contiguous()
         idt = f_q.view(B, d_v, h * w).permute(0, 2, 1).contiguous()
 
-        updated_fq = transformer(q, k, v, s_valid_mask=ig_mask, idt=idt)
-        pred_q = model.classifier(updated_fq.view(B, -1, h, w))
+        updated_fq, _ = transformer(k, v, q, idt=idt, s_valid_mask=ig_mask)  # [B, N_q, d_v]
+        updated_fq = updated_fq.permute(0, 2, 1).view(B, -1, h, w)
+        pred_q = model.classifier(updated_fq)  # [B, 2, h, w]
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         # IoU and loss

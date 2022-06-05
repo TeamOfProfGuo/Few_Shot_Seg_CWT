@@ -81,54 +81,164 @@ class MultiHeadAttentionOne(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, n_head, dim_k, dim_v, d_k, d_v, dropout=0.1, temp=1.0, trans_vn=False):
+    def __init__(self, n_head, dim, dim_v, ln=None, fv=None, fc=None, dropout=0.1, temp=None, trans_vn=False):
         super(CrossAttention, self).__init__()
         self.n_head = n_head   # 4
-        self.d_k = d_k         # 512
-        self.d_v = d_v         # 512
+        head_dim = dim // n_head
+        self.temperature = temp or head_dim ** -0.5
         self.trans_vn = trans_vn
 
-        self.qk_fc = nn.Linear(dim_k, n_head * d_k, bias=False)
-        self.v_fc = nn.Linear(dim_v, n_head * d_v, bias=False)
-        #nn.init.normal_(self.qk_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_k + d_k)))
-        #nn.init.normal_(self.v_fc.weight, mean=0, std=np.sqrt(2.0 / (dim_v + d_v)))
+        self.qk_fc = nn.Linear(dim, dim, bias=False)
+        self.layer_norm_q = nn.LayerNorm(dim) if ln == 'ln' else nn.Identity()
+        self.layer_norm_k = nn.LayerNorm(dim) if ln == 'ln' else nn.Identity()
+        self.v_fc = nn.Linear(dim_v, dim_v, bias=False) if fv == 'fv' else nn.Identity()
 
-        self.temperature = temp # np.power(d_k, 0.5)
-        self.layer_norm = nn.LayerNorm(d_v)
-
-        self.fc = nn.Linear(n_head * d_v, d_v)
+        self.fc = nn.Linear(dim_v, dim_v) if fc=='fc' else nn.Identity()
         nn.init.xavier_normal_(self.fc.weight)
         self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(dim_v)
 
-    def forward(self, q, k, v, s_valid_mask, idt):   # k, v: support pixels, q：query pixels
+    def forward(self, k, v, q, idt, s_valid_mask):   # k, v: support pixels, q：query pixels
         B, N_q, C = q.shape
-        N_s = k.size(1)
+        B, N_s, D = v.shape
 
         if self.trans_vn:
             v = F.normalize(v, dim=-1)
             idt = F.normalize(idt, dim=-1)
 
-        q = self.qk_fc(q).reshape(B, N_q, self.n_head, self.d_k).permute(0, 2, 1, 3)  #[B, N, nH, d_k] -> [B, nH, N, d_k]
-        k = self.qk_fc(k).reshape(B, N_s, self.n_head, self.d_k).permute(0, 2, 1, 3)
-        v = self.v_fc(v).reshape(B, N_s, self.n_head, self.d_v).permute(0, 2, 1, 3)
-        q = q.contiguous().view(-1, N_q, self.d_k)  # [B*nH, N, d_k]
-        k = k.contiguous().view(-1, N_s, self.d_k)
-        v = v.contiguous().view(-1, N_s, self.d_v)
+        q = self.qk_fc(q).reshape(B, N_q, self.n_head, C//self.n_head).permute(0, 2, 1, 3)  #[B, N, nH, d_k] -> [B, nH, N, d_k]
+        k = self.qk_fc(k).reshape(B, N_s, self.n_head, C//self.n_head).permute(0, 2, 1, 3)
+        v = self.v_fc(v).reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
+        q = q.contiguous().view(B*self.n_head, N_q, -1)  # [B*nH, N, d_k]
+        k = k.contiguous().view(B*self.n_head, N_s, -1)
+        v = v.contiguous().view(B*self.n_head, N_s, -1)
+
+        q = self.layer_norm_q(q)
+        k = self.layer_norm_k(k)
 
         attn = torch.bmm(q, k.transpose(1, 2)) * self.temperature   # [B*nH, N_q, N_s]
         if s_valid_mask is not None:
             s_valid_mask = s_valid_mask.unsqueeze(1).repeat(1, self.n_head, 1)  # [B, N_s] ->  [B, nH, N_s]
             s_valid_mask = s_valid_mask.unsqueeze(-2).float()                   # [B, nH, 1, N_s]
-            s_valid_mask = s_valid_mask.view(-1, 1, N_s) * -10000.0             # [B*nH, 1, N_s]
+            s_valid_mask = s_valid_mask.view(B*self.n_head, 1, N_s) * -1000.0             # [B*nH, 1, N_s]
             attn = attn + s_valid_mask                                          # [B*nH, N_q, N_s]
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)                          # dropOut on the attention weight!
         output = torch.bmm(attn, v)                        # [B*nH, N_q, d_v]
 
-        output = output.view(B, self.n_head, N_q, self.d_v)                # [B, nH, N_q, d_v]
+        output = output.view(B, self.n_head, N_q, -1)                # [B, nH, N_q, d_v]
         output = output.permute(0, 2, 1, 3).contiguous().view(B, N_q, -1)  # [B, N_q, nH, d_v] -> [B, N_q, nH*d_v]
 
         output = self.dropout(self.fc(output))                             # [B, N_q, d_v]
         output = self.layer_norm(output + idt)
-        return output
+        return output, attn
 
+
+class MHA(nn.Module):
+    def __init__(self, n_head, dim, dim_v, qkv_bias=False, qk_scale=None, proj_drop=0.1, attn_drop=0.1,
+                 norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.norm1_q = norm_layer(dim)
+        self.norm1_k = norm_layer(dim)
+        self.norm1_v = norm_layer(dim_v)
+
+        self.n_head = n_head
+        head_dim = dim // n_head
+        self.scale = qk_scale or head_dim ** -0.5
+
+        self.qk_fc = nn.Linear(dim, dim, bias=qkv_bias)
+        self.qk_fc.weight.data.copy_(torch.eye(dim, dim) + torch.randn(dim, dim) * 0.001)
+        self.v_fc = nn.Linear(dim_v, dim_v, bias=qkv_bias)
+        self.proj = nn.Linear(dim_v, dim_v)
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj_drop = nn.Dropout(proj_drop)
+        # self.norm2 = norm_layer(dim_v)
+
+    def forward(self, k, v, q, idt=None, s_valid_mask=None, return_attention=True):
+        q, k, v = self.norm1_q(q), self.norm1_k(k), self.norm1_v(v)
+
+        B, N_q, C = q.shape
+        B, N_s, D = v.shape
+
+        q = self.qk_fc(q).reshape(B, N_q, self.n_head, C//self.n_head).permute(0, 2, 1, 3)  # [B, N, nH, d] -> [B, nH, N, d_k]
+        k = self.qk_fc(k).reshape(B, N_s, self.n_head, C//self.n_head).permute(0, 2, 1, 3)
+        # v = self.v_fc(v).reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
+        v = v.reshape(B, N_s, self.n_head, D//self.n_head).permute(0, 2, 1, 3)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale    # [B, nH, N_q, N_s]
+        if s_valid_mask is not None:
+            s_valid_mask = s_valid_mask.unsqueeze(1).repeat(1, self.n_head, 1)  # [B, N_s] ->  [B, nH, N_s]
+            s_valid_mask = s_valid_mask.unsqueeze(-2).float() * (-1000.0)       # [B, nH, 1, N_s]
+            attn = attn + s_valid_mask                                          # [B*nH, N_q, N_s]
+
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N_q, -1)  # [B, nH, N_q, d_v] -> [B, N_q, nH, d_v] -> [B, N_q, D]
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        output = x if idt is None else x+0.2*idt
+        return output, attn
+
+
+class AttentionBlock(nn.Module):
+    def __init__(self, dim, dim_v, scale_att=10.0, mode='l', v_norm=False):
+        super().__init__()
+        self.dim = dim
+        self.mode = mode
+        self.v_norm = v_norm
+        self.qk_fc = nn.Linear(dim, dim)
+        self.qk_fc.weight.data.copy_(torch.eye(dim, dim) + torch.randn(dim, dim)*0.001)
+        self.qk_fc.bias.data.zero_()
+
+        self.scale_att = nn.Parameter(torch.FloatTensor(1).fill_(scale_att), requires_grad=True)
+
+        self.att_wt = LinearDiag(dim_v, mode=mode)
+        self.org_wt = LinearDiag(dim_v, mode=mode)
+
+    def forward(self, k, v, q, fq, s_valid_mask):
+        B, N_q, C = q.shape
+        B, N_s, D = v.shape
+
+        if self.v_norm:
+            v = F.normalize(v, p=2, dim=-1)
+            fq = F.normalize(fq, p=2, dim=-1)
+
+        q = self.qk_fc(q)  # [B, N_q, C]
+        k = self.qk_fc(k)  # [B, N_s, C]
+        q = F.normalize(q, p=2, dim=-1)
+        k = F.normalize(k, p=2, dim=-1)
+
+        attn = self.scale_att * torch.bmm(q, k.permute(0, 2, 1))
+        if s_valid_mask is not None:
+            s_valid_mask = s_valid_mask.unsqueeze(1).repeat(1, N_q, 1)  # [B, N_s] ->  [B, N_q, N_s]
+            attn = attn + s_valid_mask * (-1000.0)
+        attn = F.softmax(attn, dim=-1)     # [B, N_q, N_s]
+        fq_att = torch.bmm(attn, v)        # [B, N_q, D]
+
+        out = self.att_wt(fq_att) + self.org_wt(fq)
+        return out, attn
+
+
+class LinearDiag(nn.Module):
+    def __init__(self, num_features, mode='l', bias=False):
+        super(LinearDiag, self).__init__()
+        if mode == 'l':
+            self.weight = nn.Parameter(torch.tensor(1.0))
+        elif mode == 'ld':
+            weight = torch.FloatTensor(num_features).fill_(1)  # initialize to the identity transform
+            self.weight = nn.Parameter(weight, requires_grad=True)
+
+        if bias:
+            bias = torch.FloatTensor(num_features).fill_(0)
+            self.bias = nn.Parameter(bias, requires_grad=True)
+        else:
+            self.register_parameter('bias', None)
+
+    def forward(self, X):
+        out = X * self.weight
+        if self.bias is not None:
+            out = out + self.bias.expand_as(out)
+        return out
