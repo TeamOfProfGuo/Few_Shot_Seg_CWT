@@ -98,7 +98,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ======= Transformer =======
     trans_name, ln, fv, fc = args.trans_type.split('_')
-    transformer = transformer_dt(trans_name.upper())(n_head=4, dim=2048, dim_v=512, ln=ln, fv=fv, fc=fc).cuda()
+    transformer = transformer_dt[trans_name.upper()](n_head=4, dim=2048, dim_v=512, ln=ln, fv=fv, fc=fc).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
 
     # ========= Data  ==========
