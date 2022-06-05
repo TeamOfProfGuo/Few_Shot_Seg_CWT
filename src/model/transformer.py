@@ -197,13 +197,13 @@ class AttentionBlock(nn.Module):
         self.att_wt = LinearDiag(dim_v, mode=mode)
         self.org_wt = LinearDiag(dim_v, mode=mode)
 
-    def forward(self, k, v, q, fq, s_valid_mask):
+    def forward(self, k, v, q, idt, s_valid_mask):
         B, N_q, C = q.shape
         B, N_s, D = v.shape
 
         if self.v_norm is True or self.v_norm == 'vn':
             v = F.normalize(v, p=2, dim=-1)
-            fq = F.normalize(fq, p=2, dim=-1)
+            idt = F.normalize(idt, p=2, dim=-1)
 
         q = self.qk_fc(q)  # [B, N_q, C]
         k = self.qk_fc(k)  # [B, N_s, C]
@@ -217,7 +217,7 @@ class AttentionBlock(nn.Module):
         attn = F.softmax(attn, dim=-1)     # [B, N_q, N_s]
         fq_att = torch.bmm(attn, v)        # [B, N_q, D]
 
-        out = self.att_wt(fq_att) + self.org_wt(fq)
+        out = self.att_wt(fq_att) + self.org_wt(idt)
         return out, attn
 
 

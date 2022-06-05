@@ -54,7 +54,7 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   rmid: nr
-  trans_type: AB_vn_ld
+  trans_type: AB_o_ld
 
 Classifier:
   dist: cosN
@@ -75,4 +75,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: AB_vn_ld
+  exp_name: AB_o_ld
