@@ -11,6 +11,7 @@ import PIL.ImageEnhance
 import PIL.ImageDraw
 from PIL import Image
 from torchvision import transforms
+import torchvision.transforms.functional as F
 
 
 # ==================================================================================================
@@ -162,6 +163,25 @@ class Resize(object):
             return image, label
         else:
             return image, new_h, new_w
+
+class Resize_np(object):
+    # Resize the input to the given size, 'size' is a 2-element tuple or list in the order of (h, w).
+    def __init__(self, size):
+        if isinstance(size, int):
+            self.size = (size, size)
+        else:
+            self.size = size
+
+    def __call__(self, image, label):
+
+        # resize image
+        image = cv2.resize(image, dsize=self.size,  interpolation=cv2.INTER_LINEAR)  # F.resize(image, self.size, self.interpolation)
+        image = image.astype(np.int)
+        # resize the label
+        label = cv2.resize(label.astype(np.float32), dsize=self.size, interpolation=cv2.INTER_NEAREST)
+
+        return image, label
+
 
 
 class RandScale(object):

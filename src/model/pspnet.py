@@ -218,7 +218,7 @@ class PSPNet(nn.Module):
             s_loss.backward()
             optimizer.step()
 
-    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s = None):
+    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s=None, ret_curr=False):
         # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
         bs, C, height, width = f_q.size()
 
@@ -231,6 +231,7 @@ class PSPNet(nn.Module):
         proj_q = F.normalize(proj_q, dim=-1)
         proj_k = F.normalize(proj_k, dim=-2)
         sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
+        corr = sim.reshape(bs, height, width, height, width)                                     # return Corr
 
         # mask ignored pixels
         s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
@@ -280,7 +281,11 @@ class PSPNet(nn.Module):
 
         out = (weighted_v * self.gamma + f_q)/(1+self.gamma)
         pred_q_label = self.classifier(out)
-        return pred_q_label
+
+        if ret_curr:
+            return pred_q_label, [corr, weighted_v]
+        else:
+            return pred_q_label
 
     def sampling(self, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s = None):
         bs, C, height, width = fq_fea.size()

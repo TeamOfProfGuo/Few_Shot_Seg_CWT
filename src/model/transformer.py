@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+from .conv4d import CenterPivotConv4d
+
+
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -244,3 +247,37 @@ class LinearDiag(nn.Module):
         if self.bias is not None:
             out = out + self.bias.expand_as(out)
         return out
+
+
+class DynamicFusion(nn.Module):
+
+    def __init__(self, im_size=30, mid_dim=256):
+        super().__init__()
+        self.im_size = im_size
+
+        self.conv4d = CenterPivotConv4d(in_channels=1, out_channels=1, kernel_size=(3,) *4, stride=(1, 1, 2, 2), padding=(1,)*4)
+        self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
+
+        in_dim = im_size*im_size * 2
+        self.att = nn.Sequential(
+            nn.Conv2d(in_dim, mid_dim, kernel_size=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(mid_dim, 1, kernel_size=1, padding=0)
+        )
+
+    def forward(self, corr, s_mask):    # corr: [1, 60, 60, 60, 60], s_mask: [1, 1, 60, 60]
+        B, h, w, h_s, w_s = corr.shape
+        B, c, h, w = s_mask.shape      # ignore should be considered as BG
+
+        corr = corr.unsqueeze(1)    # [B, 1, h, w, h_s, w_s]
+        corr = self.conv4d(corr)    # [B, 1, h, w, 30, 30]
+        corr = corr.reshape(B, h, w, self.im_size**2).permute(0, 3, 1, 2)   # [B, 900, h, w]
+
+        s_mask = self.pool(s_mask)  # [B, 1, 30, 30]
+        s_mask = s_mask.view(B, self.im_size**2, 1, 1).expand(corr.shape)   # [B, 900, h, w]
+
+        corr = torch.cat((corr, s_mask), dim=1)      # [B, 1800, h, w]
+        wt = self.att(corr)                          # [B, 1, h, w]
+        wt = F.sigmoid(wt)
+
+        return wt

@@ -10,6 +10,7 @@ import torch
 import random
 import argparse
 from typing import List
+from torchvision import transforms as T
 from torch.utils.data.distributed import DistributedSampler
 
 
@@ -31,7 +32,8 @@ def get_train_loader(args, episodic=True, return_path=False):
             [args.image_size, args.image_size], crop_type='rand',
             padding=[0 for x in args.mean], ignore_label=255
         ),
-        'resize': transform.Resize(args.image_size)
+        'resize': transform.Resize(args.image_size),
+        'resize_np': transform.Resize_np(size=(args.image_size, args.image_size))
     }
 
     train_transform = [aug_dic[name] for name in args.augmentations]
