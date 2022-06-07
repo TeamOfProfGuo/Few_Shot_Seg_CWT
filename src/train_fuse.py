@@ -99,7 +99,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer =======
-    FusionNet = DynamicFusion(im_size=30, mid_dim=256)
+    FusionNet = DynamicFusion(im_size=30, mid_dim=256).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
