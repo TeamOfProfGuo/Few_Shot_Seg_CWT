@@ -1,4 +1,5 @@
 # encoding:utf-8
+import pdb
 
 import os
 import time
@@ -157,6 +158,7 @@ def main(args: argparse.Namespace) -> None:
             out = weighted_v * wt + f_q * (1-wt)
             pd_q = model.classifier(out)
 
+            pdb.set_trace()
             pred_q1= F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
             pred_q = F.interpolate(pd_q , size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
