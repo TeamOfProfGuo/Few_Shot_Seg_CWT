@@ -73,4 +73,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: fuse_aux1
+  exp_name: fuse_aux2

@@ -18,7 +18,7 @@ from .model.pspnet import get_model
 from .model.transformer import CrossAttention, MHA, AttentionBlock, DynamicFusion
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter, get_wt_loss
+from .util import intersectionAndUnionGPU, AverageMeter, get_wt_loss, get_aux_loss
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
 
@@ -172,16 +172,7 @@ def main(args: argparse.Namespace) -> None:
             q_loss0 = criterion(pred_q0, q_label.long())
 
             # auxiliary loss
-            pd0 = model.classifier(weighted_v)  # [1, 2, 60, 60]
-            pd1 = model.classifier(f_q)
-            label = F.interpolate(q_label.unsqueeze(1).float(), size=pd0.shape[-2:], mode='nearest')
-            label[label > 1] = 255
-
-            ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
-            loss0 = ce_loss(pd0, label.squeeze(1).long()).data
-            loss1 = ce_loss(pd1, label.squeeze(1).long()).data
-
-            wt_loss = get_wt_loss(wt, loss0, loss1, eps=0.03)
+            wt_loss = get_aux_loss(wt, weighted_v, f_q, q_label, model)
             loss = q_loss + 1.0 * wt_loss
 
             optimizer_meta.zero_grad()
@@ -205,8 +196,8 @@ def main(args: argparse.Namespace) -> None:
             IoUf1, IoUb1 = (intersection1 / (union1 + 1e-10)).cpu().numpy()  # mean of BG and FG
 
             if i%100==0 or (epoch==1 and i%10==0):
-                log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} q_loss {:.2f} wt_loss {:.2f} avg_wt {:.2f} lr {:.4f}'.format(
-                    epoch, i, IoUf0, IoUb0, IoUf, IoUb, IoUf1, IoUb1, q_loss, wt_loss, torch.mean(wt[:,0:1, :, :]), optimizer_meta.param_groups[0]['lr']))
+                log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} q_loss {:.2f} wt_loss {:.2f} avg_wt {:.2f} std_wt {:.2f} lr {:.4f}'.format(
+                    epoch, i, IoUf0, IoUb0, IoUf, IoUb, IoUf1, IoUb1, q_loss, wt_loss, torch.mean(wt[:,0:1, :, :]), torch.std(wt[:,0:1, :, :]), optimizer_meta.param_groups[0]['lr']))
             if i%900==0:
                 val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 

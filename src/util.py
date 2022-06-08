@@ -18,11 +18,38 @@ B = TypeVar("B")
 
 
 
-def get_wt_loss(wt, loss0, loss1, eps=0.03, reduction='mean'):
-    delta = loss0 - loss1     # [1, 60, 60]
-    mask = (delta<0).long()   # att 优于 f_q
-    mask[mask==0] = -1        # [1, 60, 60]
-    wt10 = wt[0,1:2,:,:] - wt[0,0:1,:,:] - eps  # [1, 60, 60]   f_q weight - att weight
+def get_aux_loss(wt, att_q, f_q, q_label, model, eps=0.6, reduction='mean'):
+    pd0 = F.softmax(model.classifier(att_q), dim=1)   # [1, 2, 60, 60]
+    pd1 = F.softmax(model.classifier(f_q), dim=1)
+
+    label = F.interpolate(q_label.unsqueeze(1).float(), size=pd0.shape[-2:], mode='nearest').squeeze(1)
+    label[label > 1] = 255
+
+    det0 = torch.abs(pd0[:, 1, :, :] - label).data
+    det1 = torch.abs(pd1[:, 1, :, :] - label).data
+
+    loss_lhs = (wt[:, 0, :, :] - wt[:, 1, :, :]) * torch.sign(det0 - det1)
+    loss_rhs = -eps * torch.abs(det0 - det1)
+    loss_aux = torch.maximum(loss_lhs, loss_rhs)
+
+    loss_aux = torch.mean(loss_aux)
+    return loss_aux
+
+
+def get_wt_loss(wt, att_q, f_q, q_label, model, eps=0.03, reduction='mean'):
+    pd0 = model.classifier(att_q)  # [1, 2, 60, 60]
+    pd1 = model.classifier(f_q)
+    label = F.interpolate(q_label.unsqueeze(1).float(), size=pd0.shape[-2:], mode='nearest')
+    label[label > 1] = 255
+
+    ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255, reduction='none')
+    loss0 = ce_loss(pd0, label.squeeze(1).long()).data
+    loss1 = ce_loss(pd1, label.squeeze(1).long()).data
+
+    delta = loss0 - loss1  # [1, 60, 60]
+    mask = (delta < 0).long()  # att 优于 f_q
+    mask[mask == 0] = -1  # [1, 60, 60]
+    wt10 = wt[0, 1:2, :, :] - wt[0, 0:1, :, :] - eps  # [1, 60, 60]   f_q weight - att weight
 
     wt10 = wt10 * mask
     wt_loss = torch.maximum(wt10, torch.tensor(0.0).cuda())
