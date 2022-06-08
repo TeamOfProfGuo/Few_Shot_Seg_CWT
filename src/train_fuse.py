@@ -182,7 +182,7 @@ def main(args: argparse.Namespace) -> None:
             loss1 = ce_loss(pd1, label.squeeze(1).long()).data
 
             wt_loss = get_wt_loss(wt, loss0, loss1, eps=0.03)
-            loss = q_loss + 5.0 * wt_loss
+            loss = q_loss + 1.0 * wt_loss
 
             optimizer_meta.zero_grad()
             loss.backward()
