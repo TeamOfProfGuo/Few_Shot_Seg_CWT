@@ -283,7 +283,6 @@ class DynamicFusion(nn.Module):
         return wt
 
 
-
 class FuseNet(nn.Module):
 
     def __init__(self, im_size=30, mid_dim=256):

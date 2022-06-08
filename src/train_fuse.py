@@ -100,7 +100,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer =======
-    FusionNet = DynamicFusion(im_size=30, mid_dim=256).cuda()
+    FusionNet = FuseNet(im_size=30, mid_dim=256).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
@@ -150,15 +150,15 @@ def main(args: argparse.Namespace) -> None:
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
             pd_q1, ret_corr = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_curr=True)
 
-            corr, weighted_v = ret_corr    # [B, h, w, h_s, w_s], [B, 512, h, w]
+            corr1, weighted_v = ret_corr    # [B, h, w, h_s, w_s], [B, 512, h, w]
+            corr2 = get_corr(f_q, f_s).view( (1,) + f_q.shape[-2:]*2 )  # [B, h, w, h_s, w_s]
             s_mask = torch.clone(s_label)
             s_mask[s_mask==255] = 0
             s_mask = F.interpolate(s_mask.unsqueeze(1).float(), f_q.shape[-2:], mode='bilinear')
-            wt = FusionNet(corr, s_mask)
-            out = weighted_v * wt + f_q * (1-wt)
-            pd_q = model.classifier(out)
 
-            pdb.set_trace()
+            wt = FusionNet(corr1, corr2, s_mask)
+            out = weighted_v * wt[:, 0:1, :, :] + f_q * wt[:, 1:2, :, :]
+            pd_q = model.classifier(out)
             pred_q1= F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
             pred_q = F.interpolate(pd_q , size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -182,13 +182,18 @@ def main(args: argparse.Namespace) -> None:
             IoUf, IoUb = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter.update(q_loss.item() / args.batch_size, 1)
             train_iou_meter.update((IoUf+IoUb)/2, 1)
+
             intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
             IoUf0, IoUb0 = (intersection0 / (union0 + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
             train_iou_meter0.update((IoUf0+IoUb0)/2, 1)
-            if i%10==0:
-                log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} loss {:.2f} lr {:.4f}'.format(
-                    epoch, i, IoUf0, IoUb0, IoUf, IoUb, q_loss, optimizer_meta.param_groups[0]['lr']))
+
+            intersection1, union1, target1 = intersectionAndUnionGPU(pred_q1.argmax(1), q_label, args.num_classes_tr, 255)
+            IoUf1, IoUb1 = (intersection1 / (union1 + 1e-10)).cpu().numpy()  # mean of BG and FG
+
+            if i%100==0 or (epoch==1 and i%10==0):
+                log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} loss {:.2f} avg_wt {} lr {:.4f}'.format(
+                    epoch, i, IoUf0, IoUb0, IoUf, IoUb, IoUf1, IoUb1, q_loss, torch.mean(wt[:,0:1, :, :]), optimizer_meta.param_groups[0]['lr']))
             if i%900==0:
                 val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 
@@ -282,19 +287,19 @@ def validate_epoch(args, val_loader, model, Net):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-        # filter out ignore pixels
         fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
         fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
         pd_q1, ret_corr = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_curr=True)
 
-        corr, weighted_v = ret_corr  # [B, h, w, h_s, w_s], [B, 512, h, w]
+        corr1, weighted_v = ret_corr  # [B, h, w, h_s, w_s], [B, 512, h, w]
+        corr2 = get_corr(f_q, f_s).view((1,) + f_q.shape[-2:] * 2)  # [B, h, w, h_s, w_s]
         s_mask = torch.clone(s_label)
         s_mask[s_mask == 255] = 0
         s_mask = F.interpolate(s_mask.unsqueeze(1).float(), f_q.shape[-2:], mode='bilinear')
-        wt = Net(corr, s_mask)
-        out = weighted_v * wt + f_q * (1 - wt)
-        pd_q = model.classifier(out)
 
+        wt = Net(corr1, corr2, s_mask)
+        out = weighted_v * wt[:, 0:1, :, :] + f_q * wt[:, 1:2, :, :]
+        pd_q = model.classifier(out)
         pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
         pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
