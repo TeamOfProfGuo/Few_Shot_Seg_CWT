@@ -17,6 +17,21 @@ A = TypeVar("A")
 B = TypeVar("B")
 
 
+
+def get_wt_loss(wt, loss0, loss1, eps=0.03, reduction='mean'):
+    delta = loss0 - loss1     # [1, 60, 60]
+    mask = (delta<0).long()   # att 优于 f_q
+    mask[mask==0] = -1        # [1, 60, 60]
+    wt10 = wt[0,1:2,:,:] - wt[0,0:1,:,:] - eps  # [1, 60, 60]   f_q weight - att weight
+
+    wt10 = wt10 * mask
+    wt_loss = torch.maximum(wt10, torch.tensor(0.0).cuda())
+    if reduction == 'mean':
+        return torch.mean(wt_loss)
+    elif reduction == 'none':
+        return wt_loss
+
+
 def ensure_path(path, remove=True):
     if os.path.exists(path):
         if remove or input('{} exists, remove? ([y]/n): '.format(path)) != 'n':
