@@ -11,3 +11,4 @@ def get_corr(q, k):
     proj_k = F.normalize(proj_k, dim=-2)
     sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
     return sim
+
