@@ -248,7 +248,7 @@ class PSPNet(nn.Module):
             qf_mask = sim_qf
         else:
             print('------ pred qf mask is empty! ------')
-            qf_mask = torch.zeros([1, 3600], dtype=torch.float)
+            qf_mask = torch.zeros([1, 3600], dtype=torch.float).cuda()
 
         sim_qb = sim[qb_mask].reshape(1, -1, 3600)
         if sim_qb.numel() > 0:
@@ -257,7 +257,7 @@ class PSPNet(nn.Module):
             qb_mask = sim_qb
         else:
             print('------ pred qb mask is empty! ------')
-            qb_mask = torch.zeros([1, 3600], dtype=torch.float)
+            qb_mask = torch.zeros([1, 3600], dtype=torch.float).cuda()
 
         sf_mask = pd_s.argmax(dim=1).view(1, 3600)
         null_mask = torch.zeros([1, 3600], dtype=torch.bool)
