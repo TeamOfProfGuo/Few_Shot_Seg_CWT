@@ -233,12 +233,6 @@ class PSPNet(nn.Module):
         sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
         corr = sim.reshape(bs, height, width, height, width)                                     # return Corr
 
-        # mask ignored pixels
-        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
-        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
-        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
-        sim[s_mask == True] = 0.00001
-
         # ignore misleading points
         pd_q_mask0 = pd_q0.argmax(dim=1)
         q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=f_q.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
@@ -251,16 +245,21 @@ class PSPNet(nn.Module):
         if sim_qf.numel() > 0:
             th_qf = torch.quantile(sim_qf.flatten(), 0.8)
             sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel
+            qf_mask = sim_qf
         else:
             print('------ pred qf mask is empty! ------')
+            qf_mask = torch.zeros([1, 3600], dtype=torch.float)
+
         sim_qb = sim[qb_mask].reshape(1, -1, 3600)
         if sim_qb.numel() > 0:
             th_qb = torch.quantile(sim_qb.flatten(), 0.8)
             sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
+            qb_mask = sim_qb
         else:
             print('------ pred qb mask is empty! ------')
-        sf_mask = pd_s.argmax(dim=1).view(1, 3600)
+            qb_mask = torch.zeros([1, 3600], dtype=torch.float)
 
+        sf_mask = pd_s.argmax(dim=1).view(1, 3600)
         null_mask = torch.zeros([1, 3600], dtype=torch.bool)
         null_mask = null_mask.cuda() if torch.cuda.is_available() else null_mask
         ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
@@ -270,6 +269,12 @@ class PSPNet(nn.Module):
 
         ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
         sim[ig_mask == True] = 0.00001
+
+        # mask ignored support pixels
+        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
+        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
+        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
+        sim[s_mask == True] = 0.00001
 
         if self.args.get('dist','dot')=='cos':
             proj_v = F.normalize(proj_v, dim=1)
@@ -282,8 +287,10 @@ class PSPNet(nn.Module):
         out = (weighted_v * self.gamma + f_q)/(1+self.gamma)
         pred_q_label = self.classifier(out)
 
-        if ret_curr:
+        if ret_curr == 'cr':
             return pred_q_label, [corr, weighted_v]
+        elif ret_curr == 'cr_mk':
+            return pred_q_label, [corr, weighted_v], [qf_mask, qb_mask]
         else:
             return pred_q_label
 
