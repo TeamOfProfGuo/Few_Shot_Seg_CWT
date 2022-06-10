@@ -146,7 +146,7 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # filter out ignore pixels
-            fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
+            fs_fea = fs_lst[-1]  # [1, 2048, 60, 60]
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
             pd_q1, ret_corr, ret_mk = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_curr='cr_mk')
 
@@ -176,8 +176,8 @@ def main(args: argparse.Namespace) -> None:
             q_loss0 = criterion(pred_q0, q_label.long())
 
             # auxiliary loss
-            wt_loss = get_aux_loss(wt, weighted_v, f_q, q_label, model)
-            loss = q_loss + 1.0 * wt_loss
+            wt_loss = 0
+            loss = q_loss
 
             optimizer_meta.zero_grad()
             loss.backward()
@@ -200,8 +200,10 @@ def main(args: argparse.Namespace) -> None:
             IoUf1, IoUb1 = (intersection1 / (union1 + 1e-10)).cpu().numpy()  # mean of BG and FG
 
             if i%100==0 or (epoch==1 and i%10==0):
-                log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} q_loss {:.2f} wt_loss {:.2f} avg_wt {:.2f} std_wt {:.2f} lr {:.4f}'.format(
-                    epoch, i, IoUf0, IoUb0, IoUf, IoUb, IoUf1, IoUb1, q_loss, wt_loss, torch.mean(wt), torch.std(wt), optimizer_meta.param_groups[0]['lr']))
+                log('Epoch{} Iter{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} '
+                    'q_loss {:.2f} wt_loss {:.2f} avg_wt {:.2f} std_wt {:.2f} lr {:.4f}'.format(
+                    epoch, i, IoUf0, IoUb0, IoUf, IoUb, IoUf1, IoUb1,
+                    q_loss, wt_loss, torch.mean(wt), torch.std(wt), optimizer_meta.param_groups[0]['lr']))
             if i%900==0:
                 val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 
