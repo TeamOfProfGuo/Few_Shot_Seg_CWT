@@ -8,6 +8,9 @@ from .conv4d import CenterPivotConv4d, Conv4d
 
 conv4_dt = {'cv4': Conv4d, 'red': CenterPivotConv4d}
 
+# input arguments
+# Conv4d: ( in_channels, out_channels, kernel_size, bias=True, pre_permuted_filters=True, padding=True )
+# CenterPivotConv4d: (in_channels, out_channels, kernel_size, stride=(1,)*4, padding=(1,)*4, bias=True))
 
 def MutualMatching(corr4d):
     # mutual matching
