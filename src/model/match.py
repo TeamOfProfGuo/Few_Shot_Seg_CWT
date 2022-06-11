@@ -8,6 +8,7 @@ from .conv4d import CenterPivotConv4d, Conv4d
 
 conv4_dt = {'cv4': Conv4d, 'red': CenterPivotConv4d}
 
+
 def MutualMatching(corr4d):
     # mutual matching
     batch_size, ch, fs1, fs2, fs3, fs4 = corr4d.size()
@@ -27,12 +28,11 @@ def MutualMatching(corr4d):
     corr4d_A = corr4d_A.view(batch_size, 1, fs1, fs2, fs3, fs4)
 
     corr4d = corr4d * (corr4d_A * corr4d_B)  # parenthesis are important for symmetric output
-
     return corr4d
 
 
 class NeighConsensus(torch.nn.Module):
-    def __init__(self, use_cuda=True, kernel_sizes=[3,3,3], channels=[10,10,1], symmetric_mode=True):
+    def __init__(self, kernel_sizes=[3,3,3], channels=[10,10,1], symmetric_mode=True, conv='cv4'):
         super(NeighConsensus, self).__init__()
         self.symmetric_mode = symmetric_mode
         self.kernel_sizes = kernel_sizes
@@ -46,11 +46,9 @@ class NeighConsensus(torch.nn.Module):
                 ch_in = channels[i-1]
             ch_out = channels[i]
             k_size = kernel_sizes[i]
-            nn_modules.append(Conv4d(in_channels=ch_in,out_channels=ch_out,kernel_size=k_size,bias=True))
+            nn_modules.append(conv4_dt[conv](in_channels=ch_in,out_channels=ch_out,kernel_size=k_size,bias=True))
             nn_modules.append(nn.ReLU(inplace=True))
         self.conv = nn.Sequential(*nn_modules)
-        if use_cuda:
-            self.conv.cuda()
 
     def forward(self, x):
         if self.symmetric_mode:
@@ -63,3 +61,34 @@ class NeighConsensus(torch.nn.Module):
         else:
             x = self.conv(x)
         return x
+
+
+class MatchNet(nn.Module):
+    def __init__(self, temp=3.0, cv_type='red', sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
+        super(self).__init__()
+        self.temp = temp
+        self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
+
+    def forward(self, corr, v, ig_mask=None):  # ig_mask [1, 3600]
+        if corr.dim() == 5:
+            corr = corr.unsqueeze(1)        # [B, 1, h, w, h_s, w_s]
+        B, _, h, w, h_s, w_s = corr.shape
+
+        corr4d = self.run_match_model(corr).squeeze(1)
+        corr2d = corr4d.view(B, h*w, h_s*w_s)
+
+        if ig_mask is not None:
+            ig_mask = ig_mask.view(B, -1, h_s*w_s).expand(corr2d.shape)
+            corr2d[ig_mask==True] = 0.0001         # [B, N_q, N_s]
+
+        attn = F.softmax( corr2d*self.temp, dim=-1 )
+        weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
+        weighted_v = weighted_v.view(B, -1, h, w)
+        return weighted_v
+
+    def run_match_model(self,corr4d):
+        corr4d = MutualMatching(corr4d)
+        corr4d = self.NeighConsensus(corr4d)
+        corr4d = MutualMatching(corr4d)
+        return corr4d
+

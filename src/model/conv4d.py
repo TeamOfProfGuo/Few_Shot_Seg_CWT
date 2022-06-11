@@ -107,8 +107,8 @@ def conv_4d(data, filters, bias=None, permute_filters=True, use_half=False):
 
 
 class Conv4d(_ConvNd):
-    """Applies a 4D convolution over an input signal composed of several input
-    planes.
+    """Applies a 4D convolution over an input signal composed of several input planes.
+    Conv4D with automatic padding (regardless of the input args)
     """
 
     def __init__(self, in_channels, out_channels, kernel_size, bias=True, pre_permuted_filters=True, padding=True):
@@ -124,7 +124,7 @@ class Conv4d(_ConvNd):
         dilation = _quadruple(dilation)
         super(Conv4d, self).__init__(
             in_channels, out_channels, kernel_size, stride, padding, dilation,
-            False, _quadruple(0), groups, bias)
+            False, _quadruple(0), groups, bias, padding_mode='zeros')
         # weights will be sliced along one dimension during convolution loop
         # make the looping dimension to be the first one in the tensor,
         # so that we don't need to call contiguous() inside the loop
@@ -134,4 +134,5 @@ class Conv4d(_ConvNd):
         self.use_half=False
 
     def forward(self, input):
-        return conv_4d(input, self.weight, bias=self.bias,permute_filters=not self.pre_permuted_filters,use_half=self.use_half) # filters pre-permuted in constructor
+        return conv_4d(input, self.weight, bias=self.bias,
+                       permute_filters=not self.pre_permuted_filters, use_half=self.use_half) # filters pre-permuted in constructor
