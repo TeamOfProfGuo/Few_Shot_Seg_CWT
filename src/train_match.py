@@ -146,7 +146,7 @@ def main(args: argparse.Namespace) -> None:
             # filter out ignore pixels
             fs_fea = fs_lst[-1]  # [1, 2048, 60, 60]
             fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-            ig_mask, corr = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_curr=True)
+            ig_mask, corr = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr=True)
 
             weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
             pd_q1 = model.classifier(weighted_v)
@@ -289,7 +289,7 @@ def validate_epoch(args, val_loader, model, Net):
 
         fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
         fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
-        ig_mask, corr = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_curr=True)
+        ig_mask, corr = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr=True)
 
         weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
         out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
