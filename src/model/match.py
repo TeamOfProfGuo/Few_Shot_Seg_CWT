@@ -65,7 +65,7 @@ class NeighConsensus(torch.nn.Module):
 
 class MatchNet(nn.Module):
     def __init__(self, temp=3.0, cv_type='red', sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
-        super(self).__init__()
+        super().__init__()
         self.temp = temp
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
 
