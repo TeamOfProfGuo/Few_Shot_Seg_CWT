@@ -10,7 +10,7 @@ from torch.nn.modules.utils import _quadruple
 
 class CenterPivotConv4d(nn.Module):
     r""" CenterPivot 4D conv"""
-    def __init__(self, in_channels, out_channels, kernel_size, stride=(1,)*4, padding=(1,)*4, bias=True):
+    def __init__(self, in_channels, out_channels, kernel_size, padding, stride=(1,)*4, bias=True):
         super(CenterPivotConv4d, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size[:2], stride=stride[:2],
@@ -111,14 +111,14 @@ class Conv4d(_ConvNd):
     Conv4D with automatic padding (regardless of the input args)
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size, bias=True, pre_permuted_filters=True, padding=True):
+    def __init__(self, in_channels, out_channels, kernel_size=(3,)*4, padding=(1,)*4, bias=True, pre_permuted_filters=True):
         # stride, dilation and groups !=1 functionality not tested
         stride=1
         dilation=1
         groups=1
         # zero padding is added automatically in conv4d function to preserve tensor size
-        padding = 0
-        kernel_size = _quadruple(kernel_size)
+        padding = padding
+        kernel_size = kernel_size
         stride = _quadruple(stride)
         padding = _quadruple(padding)
         dilation = _quadruple(dilation)

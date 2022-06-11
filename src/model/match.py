@@ -49,7 +49,7 @@ class NeighConsensus(torch.nn.Module):
                 ch_in = channels[i-1]
             ch_out = channels[i]
             k_size = kernel_sizes[i]
-            nn_modules.append(conv4_dt[conv](in_channels=ch_in,out_channels=ch_out,kernel_size=k_size,bias=True))
+            nn_modules.append(conv4_dt[conv](in_channels=ch_in,out_channels=ch_out,kernel_size=(k_size,)*4,padding=(1,)*4,bias=True))
             nn_modules.append(nn.ReLU(inplace=True))
         self.conv = nn.Sequential(*nn_modules)
 
