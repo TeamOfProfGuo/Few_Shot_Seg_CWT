@@ -109,8 +109,8 @@ def main(args: argparse.Namespace) -> None:
     log('==> Start training')
     for epoch in range(1, args.epochs+1):
 
-        train_loss_meter = AverageMeter()
-        train_iou_meter = AverageMeter()
+        train_loss_meter1 = AverageMeter()
+        train_iou_meter1 = AverageMeter()
         train_loss_meter0 = AverageMeter()
         train_iou_meter0 = AverageMeter()
 
@@ -178,8 +178,8 @@ def main(args: argparse.Namespace) -> None:
 
             intersection1, union1, target1 = intersectionAndUnionGPU(pred_q1.argmax(1), q_label, args.num_classes_tr, 255)
             IoUb1, IoUf1 = (intersection1 / (union1 + 1e-10)).cpu().numpy()  # mean of BG and FG
-            train_loss_meter.update(q_loss1.item() / args.batch_size, 1)
-            train_iou_meter.update((IoUf + IoUb) / 2, 1)
+            train_loss_meter1.update(q_loss1.item() / args.batch_size, 1)
+            train_iou_meter1.update((IoUf1 + IoUb1) / 2, 1)
 
             intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
             IoUb, IoUf = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
@@ -207,12 +207,10 @@ def main(args: argparse.Namespace) -> None:
 
                 log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
-        log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}===========\n'.format(
-            epoch, train_iou_meter0.avg, train_iou_meter.avg, train_loss_meter0.avg,
-            train_loss_meter.avg))
-        train_iou_meter.reset()
-        train_loss_meter.reset()
-
+        log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, loss0 {:.2f}, loss1 {:.2f}===========\n'.format(
+            epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_loss_meter0.avg, train_loss_meter1.avg))
+        train_iou_meter1.reset()
+        train_loss_meter1.reset()
 
                 # For debugging
                 # if i%50 == 0:

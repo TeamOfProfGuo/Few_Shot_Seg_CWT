@@ -13,9 +13,9 @@ import torch.nn.parallel
 import torch.utils.data
 import torch.optim as optim
 from collections import defaultdict
-from src.model import conv4d
+from src.model import *
 from src.model.pspnet import get_model
-from src.model.transformer import MultiHeadAttentionOne, DynamicFusion
+from src.model.transformer import MultiHeadAttentionOne, DynamicFusion, FuseNet
 from src.optimizer import get_optimizer, get_scheduler
 from src.dataset.dataset import get_val_loader, get_train_loader, EpisodicData
 from src.util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
@@ -31,7 +31,7 @@ LAYERS= 50
 SHOT= 1                         
 """
 
-arg_input = ' --config config_files/pascal_asy.yaml   \
+arg_input = ' --config config_files/pascal_fuse.yaml   \
   --opts train_split 0   layers 50    shot 1   trans_lr 0.001   cls_lr 0.1    batch_size 1  \
   batch_size_val 1   epochs 20     test_num 1000 '
 
@@ -95,11 +95,6 @@ if args.resume_weights:
     for param in model.bottleneck.parameters():
         param.requires_grad = False
 
-# ====== Transformer ======
-param_list = [model.gamma]
-optimizer_meta = get_optimizer(args, [dict(params=param_list, lr=args.trans_lr * args.scale_lr)])
-trans_save_dir = get_model_dir_trans(args)
-
 # ====== Data  ======
 args.workers = 0
 args.augmentations = ['hor_flip', 'resize_np']
@@ -107,10 +102,13 @@ args.augmentations = ['hor_flip', 'resize_np']
 train_loader, train_sampler = get_train_loader(args)   # split 0: len 4760, cls[6,~20]在pascal train中对应4760个图片， 先随机选图片，再根据图片选cls
 episodic_val_loader, _ = get_val_loader(args)          # split 0: len 364， 对应cls[1,~5],在pascal val中对应364个图片
 
+# ====== Transformer ======
+FusionNet = MatchNet(temp=3.0, cv_type='red', sym_mode=True)
+optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
+scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
+
 # ====== Metrics initialization ======
 max_val_mIoU = 0.
-iter_per_epoch = args.iter_per_epoch if args.iter_per_epoch <= len(train_loader) else len(train_loader)
-
 # ================================================ Training ================================================
 epoch = 1
 train_loss_meter = AverageMeter()
@@ -155,81 +153,49 @@ inv_q = invTrans(qry_img[0])
 inv_q[:, (30-1)*8, (30-1)*8] = torch.tensor([1.0, 0, 0])
 plt.imshow(inv_q.permute(1, 2, 0))
 
-# ================================== 改进attention机制  ==================================
-TH = 0.8
 
-# 用layer4 的output来做attention
+# ================================== Dynamic Fusion  ==================================
 fs_fea = fs_lst[-1]    # [2, 2048, 60, 60]
 fq_fea = fq_lst[-1]    # [1, 2048, 60, 60]
+ig_mask, corr = model.sampling(fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr=True)
 
-# ==== attention 开始 ====
-self = model
-bs, C, height, width = f_q.size()
+weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
+pd_q1 = model.classifier(weighted_v)
+pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
+pd_q = model.classifier(out)
+pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-# 基于attention, refine f_q, 并对query img做prediction
-proj_q = fq_fea.view(bs, -1, height * width).permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
-proj_k = fs_fea.view(bs, -1, height * width)  # [1, 2048, hw]
-proj_v = f_s.view(bs, -1, height * width)
+# Loss function: Dynamic class weights used for query image only during training
+q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
+q_back_pix = np.where(q_label_arr == 0)
+q_target_pix = np.where(q_label_arr == 1)
+loss_weight = torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]).cuda()
+criterion = nn.CrossEntropyLoss(weight=loss_weight, ignore_index=255)
+q_loss1 = criterion(pred_q1, q_label.long())
+q_loss0 = criterion(pred_q0, q_label.long())
 
-# normalize q and k
-proj_q = F.normalize(proj_q, dim=-1)   # [B, N_q, 2048}
-proj_k = F.normalize(proj_k, dim=-2)   # [B, 2048, N_s]
-sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (N_q), 3600(N_s)]
+corr, weighted_v = ret_corr
+sim_qf, sim_qb = ret_mk
+pd_mask0 = pd_q0.argmax(dim=1).unsqueeze(1)
 
+s_mask = torch.clone(s_label)
+s_mask[s_mask==255] = 0
+s_mask = F.interpolate(s_mask.unsqueeze(1).float(), (30,30), mode='bilinear', align_corners=True)
 
-# ============ to calculate fusion weight
-FusionNet = DynamicFusion(im_size=30, mid_dim=256)
+sim_qf = F.interpolate(sim_qf.view(corr.shape[:3]).unsqueeze(1), (30, 30), mode='bilinear', align_corners=True)
+sim_qb = F.interpolate(sim_qb.view(corr.shape[:3]).unsqueeze(1), (30, 30), mode='bilinear', align_corners=True)
+
+# ====== dynamic fuse model ======
+FusionNet = FuseNet(im_size=30, mid_dim=256)
 optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
+scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
-corr = sim.reshape(bs, height, width, height, width)  # [B, h, w, h_s, w_s]
-s_mask_corr = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
-s_mask_corr[s_mask_corr==255] = 0
-wt = FusionNet(corr, s_mask_corr)
+wt = FusionNet(corr, pd_mask0, corr_fg=sim_qf, corr_bg=sim_qb, s_mask=s_mask)
 
-# ============ end
-
-# mask ignored pixels
-s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
-s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
-s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
-sim[s_mask == True] = 0.00001
-
-# ignore misleading points
-q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=f_q.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
-qf_mask = (q_mask != 255.0) * (pd_q_mask0==1)   # predicted qry FG
-qb_mask = (q_mask != 255.0) * (pd_q_mask0==0)   # predicted qry BG
-qf_mask = qf_mask.view(qf_mask.shape[0], -1, 1).expand(sim.shape)   # 保留query predicted FG
-qb_mask = qb_mask.view(qb_mask.shape[0], -1, 1).expand(sim.shape)   # 保留query predicted BG
-
-sim_qf = sim[qf_mask].reshape(1, -1, 3600)
-th_qf = torch.quantile(sim_qf.flatten(), TH)
-sim_qb = sim[qb_mask].reshape(1, -1, 3600)
-th_qb = torch.quantile(sim_qb.flatten(), TH)
-sim_qf = torch.mean(sim_qf, dim=1)          # 取平均 对应support img 与Q前景相关 所有pixel
-sim_qb = torch.mean(sim_qb, dim=1)          # 取平均 对应support img 与Q背景相关 所有pixel
-sf_mask = pd_s.argmax(dim=1).view(1, 3600)
-
-ig_mask1 = (sim_qf>th_qf) & (sf_mask==0)   # query的前景attend到support背景
-ig_mask2 = (sim_qf>th_qf) & (sim_qb>th_qb)    # query的前景与query的背景
-ig_mask3 = (sim_qb>th_qb) & (sf_mask==1)   # query的背景attend到support前景
-ig_mask = ig_mask1 | ig_mask2 | ig_mask3 | s_mask[:,1,:]
-plt.imshow(ig_mask.view(60,60).long(), cmap='gray')
-
-ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
-sim[ig_mask == True] =0.00001
-
-attention = F.softmax(sim * 20.0, dim=-1)
-weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
-weighted_v = weighted_v.view(bs, C, height, width)
-
-out = (weighted_v * self.gamma + f_q) / (1 + self.gamma)
-pred_q = self.classifier(out)
-pred_q = F.interpolate(pred_q, size=q_label.shape[1:],mode='bilinear', align_corners=True)
-
-# ===== Dynamic Fusion
 out = weighted_v * wt + f_q * (1-wt)
-pred_q = self.classifier(out)
-pred_q = F.interpolate(pred_q, size=q_label.shape[1:],mode='bilinear', align_corners=True)
+pd_q = model.classifier(out)
+pred_q = F.interpolate(pd_q, size=q_label.shape[1:],mode='bilinear', align_corners=True)
 
 # ===== loss function
 q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
@@ -238,15 +204,108 @@ q_target_pix = np.where(q_label_arr == 1)
 criterion = nn.CrossEntropyLoss(weight=torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]), ignore_index=255)
 
 loss_q = criterion(pred_q, q_label.long())
+
+# =========================== aux loss  new ===========================
+pd0 = F.softmax(model.classifier(weighted_v), dim=1)   # [1, 2, 60, 60]
+pd1 = F.softmax(model.classifier(f_q), dim=1)
+
+# === visualize
+new = torch.clone(pd1)
+new = new.detach()
+plt.imshow(new[0,1:2,:,:].squeeze(), cmap='gray')
+# === end
+eps = 0.5
+
+label = F.interpolate(q_label.unsqueeze(1).float(), size=pd0.shape[-2:], mode='nearest').squeeze(1)
+label[label>1] = 255
+
+det0 = torch.abs(pd0[:,1,:,:] - label).data
+det1 = torch.abs(pd1[:,1,:,:] - label).data
+
+loss_lhs = (wt[:,0,:,:] - wt[:,1,:,:]) * torch.sign(det0 - det1)
+loss_rhs = -eps * torch.abs(det0 - det1)
+loss_aux = torch.maximum(loss_lhs, loss_rhs)
+
+loss_aux = torch.mean(loss_aux)
+
+loss = loss_q + loss_aux
+
 optimizer_meta.zero_grad()
-loss_q.backward()
+loss.backward()
 optimizer_meta.step()
 
-FusionNet.conv4d.conv1.weight.grad
+
+def get_wt_loss(wt, att_q, f_q, q_label, model, eps=0.03, reduction='mean'):
+    pd0 = model.classifier(att_q)  # [1, 2, 60, 60]
+    pd1 = model.classifier(f_q)
+    label = F.interpolate(q_label.unsqueeze(1).float(), size=pd0.shape[-2:], mode='nearest')
+    label[label > 1] = 255
+
+    ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255, reduction='none')
+    loss0 = ce_loss(pd0, label.squeeze(1).long()).data
+    loss1 = ce_loss(pd1, label.squeeze(1).long()).data
+
+    delta = loss0 - loss1  # [1, 60, 60]
+    mask = (delta < 0).long()  # att 优于 f_q
+    mask[mask == 0] = -1  # [1, 60, 60]
+    wt10 = wt[0, 1:2, :, :] - wt[0, 0:1, :, :] - eps  # [1, 60, 60]   f_q weight - att weight
+
+    wt10 = wt10 * mask
+    wt_loss = torch.maximum(wt10, torch.tensor(0.0).cuda())
+    if reduction == 'mean':
+        return torch.mean(wt_loss)
+    elif reduction == 'none':
+        return wt_loss
+
+
+torch.max(FusionNet.conv4d[0].conv1.weight.grad)
 torch.max(FusionNet.att[0].weight.grad)
 torch.max(FusionNet.att[2].weight.grad)
 
+# =========================== aux loss  ===========================
+pd0 = model.classifier(weighted_v)   # [1, 2, 60, 60]
+pd1 = model.classifier(f_q)
+label = F.interpolate(q_label.unsqueeze(1).float(), size=pd0.shape[-2:], mode='nearest')
+label[label>1] = 255
 
+ce_loss = nn.CrossEntropyLoss(ignore_index=255, reduction='none')
+loss0 = ce_loss(pd0, label.squeeze(1).long()).data
+loss1 = ce_loss(pd1, label.squeeze(1).long()).data
+
+# ==== define loss function
+
+def get_wt_loss(wt, loss0, loss1, eps=0.03, reduction='mean'):
+    delta = loss0 - loss1     # [1, 60, 60]
+    mask = (delta<0).long()   # att 优于 f_q
+    mask[mask==0] = -1        # [1, 60, 60]
+    wt10 = wt[0,1:2,:,:] - wt[0,0:1,:,:] - eps  # [1, 60, 60]   f_q weight - att weight
+
+    wt10 = wt10 * mask
+    wt_loss = torch.maximum(wt10, torch.tensor(0.0))
+    if reduction == 'mean':
+        return torch.mean(wt_loss)
+    elif reduction == 'none':
+        return wt_loss
+
+wt_loss = get_wt_loss(wt, loss0, loss1, eps=0.03)
+
+
+# ===== loss function
+q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
+q_back_pix = np.where(q_label_arr == 0)
+q_target_pix = np.where(q_label_arr == 1)
+criterion = nn.CrossEntropyLoss(weight=torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]), ignore_index=255)
+
+loss_q = criterion(pred_q, q_label.long())
+
+loss = loss_q + 5 * wt_loss
+optimizer_meta.zero_grad()
+loss.backward()
+optimizer_meta.step()
+
+torch.max(FusionNet.conv4d[0].conv1.weight.grad)
+torch.max(FusionNet.att[0].weight.grad)
+torch.max(FusionNet.att[2].weight.grad)
 
 # ==== 比较结果 base vs att ====
 intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
@@ -254,6 +313,9 @@ print(intersection0 / (union0 + 1e-10))
 
 intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
 print(intersection / (union + 1e-10))
+
+intersection1, union1, target1 = intersectionAndUnionGPU(pred_q1.argmax(1), q_label, args.num_classes_tr, 255)
+print(intersection1 / (union1 + 1e-10))
 
 
 # =================== mask query  =====================
