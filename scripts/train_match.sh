@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=match_tp20
+#SBATCH --job-name=mt_tp20_ig
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -25,7 +25,7 @@ singularity exec --nv \
             --overlay /scratch/lg154/python36/python36.ext3:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_match --config config_files/${DATA}_fuse.yaml \
+            python -m src.train_match --config config_files/${DATA}_match.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
@@ -33,7 +33,7 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 20 \
-						    exp_name match_tp20 \
+						    exp_name match_tp20_0ig \
 					 > log.txt 2>&1"
 
 echo "finish"

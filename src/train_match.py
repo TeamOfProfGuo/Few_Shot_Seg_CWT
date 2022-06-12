@@ -144,13 +144,19 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # filter out ignore pixels
-            fs_fea = fs_lst[-1]  # [1, 2048, 60, 60]
-            fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+            if args.rmid == 'nr':
+                idx = -1
+            elif args.rmid in ['mid2', 'mid3', 'mid4']:
+                idx = int(args.rmid[-1]) - 2
+            fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
+            fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
             pd_q_b, ret_corr, ig_mask = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr='cr_ig')
             corr, weighted_v_b = ret_corr
             pd_q1_b = model.classifier(weighted_v_b)
             pred_q1_b = F.interpolate(pd_q1_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)     # weighted_v based on original corr matrix
 
+            if not args.ignore:
+                ig_mask = None
             weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
@@ -290,13 +296,19 @@ def validate_epoch(args, val_loader, model, Net):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-        fs_fea = fs_lst[-1]  # [2, 2048, 60, 60]
-        fq_fea = fq_lst[-1]  # [1, 2048, 60, 60]
+        if args.rmid == 'nr':
+            idx = -1
+        elif args.rmid in ['mid2', 'mid3', 'mid4']:
+            idx = int(args.rmid[-1]) - 2
+        fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
+        fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
         pd_q_b, ret_corr, ig_mask = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr='cr_ig')
         corr, weighted_v_b = ret_corr
         pd_q1_b = model.classifier(weighted_v_b)
         pred_q1_b = F.interpolate(pd_q1_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)  # weighted_v based on original corr
 
+        if not args.ignore:
+            ig_mask = None
         weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
         out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
         pd_q1 = model.classifier(weighted_v)
