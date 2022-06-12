@@ -33,7 +33,7 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 20 \
-						    exp_name match_tp20_0ig \
+						    exp_name match_l3_tp20\
 					 > log.txt 2>&1"
 
 echo "finish"

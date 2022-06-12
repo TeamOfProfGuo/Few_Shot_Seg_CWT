@@ -52,8 +52,8 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   temp: 20.0
-  rmid: nr        # nr, mid3, mid4
-  ignore: False   # ignore pixels based on ig_mask
+  rmid: mid3        # nr, mid3, mid4
+  ignore: True   # ignore pixels based on ig_mask
 
 Classifier:
   dist: cosN
@@ -74,4 +74,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: match_tp20_0ig
+  exp_name: match_l3_tp20
