@@ -218,20 +218,20 @@ class PSPNet(nn.Module):
             s_loss.backward()
             optimizer.step()
 
-    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s=None, ret_curr=False):
+    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s=None, ret_corr=False):
         # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
         bs, C, height, width = f_q.size()
-
-        # 基于attention, refine f_q, 并对query img做prediction
-        proj_q = fq_fea.view(bs, -1, height * width).permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
-        proj_k = fs_fea.view(bs, -1, height * width)  # [1, 2048, hw]
         proj_v = f_s.view(bs, -1, height * width)
 
-        # normalize q and k
-        proj_q = F.normalize(proj_q, dim=-1)
-        proj_k = F.normalize(proj_k, dim=-2)
-        sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
-        corr = sim.reshape(bs, height, width, height, width)                                     # return Corr
+        # 基于attention, refine f_q, 并对query img做prediction
+        proj_q = F.normalize(fq_fea.view(bs, -1, height * width), dim=-2).permute(0, 2, 1)  # [1, 2048, hw]->[1, hw, 2048]
+        proj_k = F.normalize(fs_fea.view(bs, -1, height * width), dim=-2)  # [1, 2048, hw]
+        sim = torch.bmm(proj_q, proj_k)  # [1, 3600(q_hw), 3600(k_hw)]
+        corr = torch.clone(sim).reshape(bs, height, width, height, width)                                  # return Corr
+
+        # mask ignored support pixels
+        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
+        s_mask = (s_mask > 1).view(s_mask.shape[0], -1)  # [n_shot, hw]
 
         # ignore misleading points
         pd_q_mask0 = pd_q0.argmax(dim=1)
@@ -253,7 +253,7 @@ class PSPNet(nn.Module):
         sim_qb = sim[qb_mask].reshape(1, -1, 3600)
         if sim_qb.numel() > 0:
             th_qb = torch.quantile(sim_qb.flatten(), 0.8)
-            sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
+            sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel, [B, 3600]
             qb_mask = sim_qb
         else:
             print('------ pred qb mask is empty! ------')
@@ -265,16 +265,10 @@ class PSPNet(nn.Module):
         ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
         ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else null_mask
         ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel() > 0 and sim_qb.numel() > 0 else null_mask
-        ig_mask = ig_mask1 | ig_mask2 | ig_mask3
+        ig_mask = ig_mask1 | ig_mask2 | ig_mask3 | s_mask
 
         ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
         sim[ig_mask == True] = 0.00001
-
-        # mask ignored support pixels
-        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
-        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
-        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
-        sim[s_mask == True] = 0.00001
 
         if self.args.get('dist','dot')=='cos':
             proj_v = F.normalize(proj_v, dim=1)
@@ -287,10 +281,12 @@ class PSPNet(nn.Module):
         out = (weighted_v * self.gamma + f_q)/(1+self.gamma)
         pred_q_label = self.classifier(out)
 
-        if ret_curr == 'cr':
+        if ret_corr == 'cr':
             return pred_q_label, [corr, weighted_v]
-        elif ret_curr == 'cr_mk':
+        elif ret_corr == 'cr_mk':
             return pred_q_label, [corr, weighted_v], [qf_mask, qb_mask]
+        elif ret_corr == 'cr_ig':
+            return pred_q_label, [corr, weighted_v], ig_mask
         else:
             return pred_q_label
 

@@ -49,7 +49,7 @@ MODEL:
   layers: 50
   bottleneck_dim: 512
   backbone_dim: 2048
-  temp: 40.0
+  temp: 20.0
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   rmid: nr
@@ -73,4 +73,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: fuse_new
+  exp_name: match_tp20
