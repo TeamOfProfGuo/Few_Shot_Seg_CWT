@@ -63,10 +63,10 @@ EVALUATION:
   save_oracle: False
 
 CLASSIFIER:
-  dist: dot
-  # cls_type: not
+  dist: cosN
+  cls_type: ooo
   adapt_iter: 200
 
 
 EXPERIMENT:
-  exp_name: pretrain
+  exp_name: pretrain_rooo
