@@ -16,7 +16,7 @@ from .model import *
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter, get_wt_loss, get_aux_loss
+from .util import intersectionAndUnionGPU, AverageMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
 
@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'fuse_{}/{}{}/shot{}_split{}/{}'.format(
+    sv_path = 'fuse_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -103,7 +103,7 @@ def main(args: argparse.Namespace) -> None:
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
     # ====== Metrics initialization ======
-    max_val_mIoU = 0.
+    max_val_mIoU, max_val_mIoU1 = 0., 0.
 
     # ====== Training  ======
     log('==> Start training')
@@ -190,22 +190,23 @@ def main(args: argparse.Namespace) -> None:
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2], IoUf['1b'], IoUb['1b'],
                     q_loss0, q_loss1, optimizer_meta.param_groups[0]['lr']))
             if i%2300==0:
-                val_Iou, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
                     max_val_mIoU = val_Iou.item()
-
                     filename_transformer = os.path.join(sv_path, f'best.pth')
-
                     if args.save_models:
-                        log('Saving checkpoint to: ' + filename_transformer)
-                        torch.save({'epoch': epoch,
-                                    'state_dict': model.state_dict(),
-                                    'optimizer': optimizer_meta.state_dict()},
-                                   filename_transformer)
-
-                log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
+                        log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
+                        torch.save({'epoch': epoch, 'state_dict': FusionNet.state_dict(),
+                                    'optimizer': optimizer_meta.state_dict()}, filename_transformer)
+                if val_Iou1.item() > max_val_mIoU1:
+                    max_val_mIoU1 = val_Iou1.item()
+                    filename_transformer = os.path.join(sv_path, f'best1.pth')
+                    if args.save_models:
+                        log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))
+                        torch.save({'epoch': epoch, 'state_dict': FusionNet.state_dict(),
+                                    'optimizer': optimizer_meta.state_dict()}, filename_transformer)
 
         log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, loss0 {:.2f}, loss1 {:.2f}===========\n'.format(
             epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_loss_meter0.avg, train_loss_meter1.avg))
@@ -334,7 +335,7 @@ def validate_epoch(args, val_loader, model, Net):
         log("Class {} : {:.4f}".format(class_, IoU[class_]))
     log('\n')
 
-    return mIoU, loss_meter.avg
+    return mIoU, mIoU1, loss_meter.avg
 
 
 if __name__ == "__main__":
