@@ -32,7 +32,7 @@ singularity exec --nv \
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
-						    epochs 15 \
+						    epochs 12 \
 					 > log.txt 2>&1"
 
 echo "finish"

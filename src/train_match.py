@@ -191,11 +191,11 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
 
             if i%100==0 or (epoch==1 and i%10==0):
-                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1b {:.2f} IoUb1b {:.2f}'
-                    'loss0 {:.2f} loss1 {:.2f} lr {:.4f}'.format(
+                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1b {:.2f} IoUb1b {:.2f} '
+                    'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2], IoUf['1b'], IoUb['1b'],
-                    q_loss0, q_loss1, optimizer_meta.param_groups[0]['lr']))
-            if i%1550==0:
+                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
+            if i%1190==0:
                 val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 
                 # Model selection
