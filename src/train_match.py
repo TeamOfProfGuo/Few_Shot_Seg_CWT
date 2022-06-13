@@ -195,7 +195,7 @@ def main(args: argparse.Namespace) -> None:
                     'loss0 {:.2f} loss1 {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2], IoUf['1b'], IoUb['1b'],
                     q_loss0, q_loss1, optimizer_meta.param_groups[0]['lr']))
-            if i%2300==0:
+            if i%1550==0:
                 val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 
                 # Model selection

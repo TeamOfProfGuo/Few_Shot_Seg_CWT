@@ -69,11 +69,13 @@ def get_val_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
         Build the episodic validation loader.
     """
     assert args.test_split in [0, 1, 2, 3, -1, 'default']
-    val_transform = transform.Compose([
-            transform.Resize(args.image_size),
-            transform.ToTensor(),
-            transform.Normalize(mean=args.mean, std=args.std)
-    ])
+
+    val_trans = [transform.ToTensor(), transform.Normalize(mean=args.mean, std=args.std)]
+    if 'resize_np' in args.augmentations:
+        val_trans = [transform.Resize_np(size=(args.image_size, args.image_size))] + val_trans
+    else:
+        val_trans = [transform.Resize(args.image_size)] + val_trans
+    val_transform = transform.Compose(val_trans)
     val_sampler = None
     split_classes = get_split_classes(args)     # 返回coco和pascal所有4个split, dict of dict
 
