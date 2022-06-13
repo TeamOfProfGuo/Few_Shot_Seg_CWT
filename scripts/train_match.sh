@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=mt_tp20_ig
+#SBATCH --job-name=l3
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
