@@ -170,7 +170,7 @@ class PSPNet(nn.Module):
         x = self.ppm(x)
         x = self.bottleneck(x)
 
-        if self.rmid in ['mid', 'mid3', 'mid4', 'mid34'] or self.rmid in [3,4]:
+        if self.rmid in ['mid', 'rmid2', 'mid3', 'mid4', 'mid34'] or self.rmid in [3,4]:
             return x, [x_2, x_3, x_4]
         elif self.rmid == 'nr':
             return x, [x4_nr]
