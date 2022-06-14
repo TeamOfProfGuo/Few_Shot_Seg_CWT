@@ -52,7 +52,7 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   temp: 20.0
-  rmid: mid4        # nr, mid3, mid4
+  rmid: mid2        # nr, mid3, mid4
   ignore: False   # ignore pixels based on ig_mask
 
 Classifier:
@@ -74,4 +74,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: match_l4_nig
+  exp_name: match_l2_nig
