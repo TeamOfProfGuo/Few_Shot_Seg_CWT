@@ -144,6 +144,7 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             # filter out ignore pixels
+            pdb.set_trace()
             if args.rmid == 'nr':
                 idx = -1
             elif args.rmid in ['mid2', 'mid3', 'mid4']:
