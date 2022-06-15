@@ -13,13 +13,15 @@ class Geometry(object):
         cls.img_size = img_size
 
         cls.spatial_side = int(img_size / 8)
-        norm_grid1d = torch.linspace(-1, 1, cls.spatial_side).cuda()
+        cls.feat_idx = torch.arange(0, cls.spatial_side).float()
+        norm_grid1d = torch.linspace(-1, 1, cls.spatial_side)
+        if torch.cuda.is_available():
+            cls.feat_idx = cls.feat_idx.cuda()
+            norm_grid1d = norm_grid1d.cuda()
 
         cls.norm_grid_x = norm_grid1d.view(1, -1).repeat(cls.spatial_side, 1).view(1, 1, -1)
         cls.norm_grid_y = norm_grid1d.view(-1, 1).repeat(1, cls.spatial_side).view(1, 1, -1)
         cls.grid = torch.stack(list(reversed(torch.meshgrid(norm_grid1d, norm_grid1d)))).permute(1, 2, 0)
-
-        cls.feat_idx = torch.arange(0, cls.spatial_side).float().cuda()
 
     @classmethod
     def normalize_kps(cls, kps):
@@ -92,7 +94,9 @@ class Geometry(object):
             src_kp = src_kp[:, :np].t()
             attmap = cls.attentive_indexing(src_kp).view(np, -1)
             prd_kp = (prd_xy.unsqueeze(0) * attmap.unsqueeze(-1)).sum(dim=1).t()
-            pads = (torch.zeros((2, max_pts - np)).cuda() - 2)
+            pads = (torch.zeros((2, max_pts - np)) - 2)                                  # check
+            if torch.cuda.is_available():
+                pads = pads.cuda()
             prd_kp = torch.cat([prd_kp, pads], dim=1)
             prd_kps.append(prd_kp)
 

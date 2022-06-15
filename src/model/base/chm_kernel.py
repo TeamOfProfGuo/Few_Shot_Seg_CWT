@@ -9,7 +9,9 @@ class KernelGenerator:
     def __init__(self, ksz, ktype):
         self.ksz = ksz
         self.idx4d = Geometry.init_idx4d(ksz)
-        self.kernel = torch.zeros((ksz, ksz, ksz, ksz)).cuda()
+        self.kernel = torch.zeros((ksz, ksz, ksz, ksz))
+        if torch.cuda.is_available():
+            self.kernel = self.kernel.cuda()
         self.center = (ksz // 2, ksz // 2)
         self.ktype = ktype
 

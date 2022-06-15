@@ -13,7 +13,9 @@ def fast4d(corr, kernel, bias=None):
     out_channels, _, kernel_size, kernel_size, kernel_size, kernel_size = kernel.size()
     psz = kernel_size // 2
 
-    out_corr = torch.zeros((bsz, out_channels, srch, srcw, trgh, trgw)).cuda()
+    out_corr = torch.zeros((bsz, out_channels, srch, srcw, trgh, trgw))
+    if torch.cuda.is_available():
+        out_corr = out_corr.cuda()
     corr = corr.transpose(1, 2).contiguous().view(bsz * srch, ch, srcw, trgh, trgw)
 
     for pidx, k3d in enumerate(kernel.permute(2, 0, 1, 3, 4, 5)):
@@ -59,7 +61,9 @@ def fast6d(corr, kernel, bias, diagonal_idx):
     corr = torch.stack(corr).transpose(0, 1)[:, sidx:eidx, sidx:eidx, :, :, :, :].unsqueeze(1).contiguous()
     corr += bias.view(1, -1, 1, 1, 1, 1, 1, 1)
 
-    reverse_idx = torch.linspace(s6d * s6d - 1, 0, s6d * s6d).long().cuda()
+    reverse_idx = torch.linspace(s6d * s6d - 1, 0, s6d * s6d).long()
+    if torch.cuda.is_available():
+        reverse_idx = reverse_idx.cuda()
     corr = corr.view(bsz, 1, s6d * s6d, s4d, s4d, s4d, s4d)[:, :, reverse_idx, :, :, :, :].\
         view(bsz, 1, s6d, s6d, s4d, s4d, s4d, s4d)
     return corr
@@ -68,7 +72,8 @@ def init_param_idx4d(param_dict):
     param_idx = []
     for key in param_dict:
         curr_offset = int(key.split('_')[-1])
-        param_idx.append(torch.tensor(param_dict[key]).cuda())
+        idx = torch.tensor(param_dict[key]).cuda() if torch.cuda.is_available() else torch.tensor(param_dict[key])
+        param_idx.append(idx)
     return param_idx
 
 class CHM4d(_ConvNd):
@@ -81,7 +86,9 @@ class CHM4d(_ConvNd):
                                     1, bias, padding_mode='zeros')
 
         # Zero kernel initialization
-        self.zero_kernel4d = torch.zeros((in_channels, out_channels, ksz4d, ksz4d, ksz4d, ksz4d)).cuda()
+        self.zero_kernel4d = torch.zeros((in_channels, out_channels, ksz4d, ksz4d, ksz4d, ksz4d))
+        if torch.cuda.is_available():
+            self.zero_kernel4d = self.zero_kernel4d.cuda()
         self.nkernels = in_channels * out_channels
 
         # Initialize kernel indices
@@ -117,7 +124,7 @@ class CHM4d(_ConvNd):
                 kernel = kernel.view(-1, ksz, ksz, ksz, ksz)
                 for jdx, kernel_single in enumerate(kernel):
                     weight = self.weight[idx + jdx * len(self.param_idx)].repeat(len(pdx)) / len(pdx)
-                    kernel_single.view(-1)[pdx] += weight
+                    kernel_single.view(-1)[pdx] = kernel_single.view(-1)[pdx] + weight                         # debug 
             kernel = kernel.view(self.in_channels, self.out_channels, ksz, ksz, ksz, ksz)
         return kernel
 
@@ -155,7 +162,11 @@ class CHM6d(_ConvNd):
                 self.param_dict6d = [[4], [0, 8], [2, 6], [1, 3, 5, 7]]
             elif ktype == 'iso':
                 self.param_dict6d = [[0, 4, 8], [2, 6], [1, 3, 5, 7]]
-            self.param_dict6d = [torch.tensor(i).cuda() for i in self.param_dict6d]
+
+            if torch.cuda.is_available():
+                self.param_dict6d = [torch.tensor(i).cuda() for i in self.param_dict6d]
+            else:
+                self.param_dict6d = [torch.tensor(i) for i in self.param_dict6d]
 
             # Initialize the shared parameters (multiplied by the number of times being shared)
             self.param_idx = init_param_idx4d(param_dict4d)

@@ -148,14 +148,14 @@ class CHMLearner(nn.Module):
         corr = self.softplus(corr)
         corr = Correlation.mutual_nn_filter(corr.view(bsz, corr.size(-1) ** 2, corr.size(-1) ** 2).contiguous())
 
-        corr2d = corr.view(bsz, h*w, h*w)
+        corr2d = corr.view(bsz, 4*h*w, 4*h*w)
 
         if ig_mask is not None:
-            ig_mask = ig_mask.view(bsz, -1, h*w).expand(corr2d.shape)
+            ig_mask = ig_mask.view(bsz, -1, 4*h*w).expand(corr2d.shape)
             corr2d[ig_mask == True] = 0.0001  # [B, N_q, N_s]
         attn = F.softmax(corr2d * self.temp, dim=-1)
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
-        weighted_v = weighted_v.view(bsz, -1, h, w)
+        weighted_v = weighted_v.view(bsz, -1, 2*h, 2*w)
 
         if ret_corr:
             return weighted_v, corr2d
