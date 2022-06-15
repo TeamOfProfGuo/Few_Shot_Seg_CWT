@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=l2
+#SBATCH --job-name=chm
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -32,7 +32,7 @@ singularity exec --nv \
 						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
-						    epochs 12 \
+						    epochs 15 \
 					 > log.txt 2>&1"
 
 echo "finish"

@@ -6,6 +6,10 @@ import numpy as np
 import torch.nn.functional as F
 from .conv4d import CenterPivotConv4d, Conv4d
 
+from .base.correlation import Correlation
+from .base.geometry import Geometry
+from .base.chm import CHM4d, CHM6d
+
 conv4_dt = {'cv4': Conv4d, 'red': CenterPivotConv4d}
 
 # input arguments
@@ -72,7 +76,7 @@ class MatchNet(nn.Module):
         self.temp = temp
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
 
-    def forward(self, corr, v, ig_mask=None):  # ig_mask [1, 3600]
+    def forward(self, corr, v, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
         if corr.dim() == 5:
             corr = corr.unsqueeze(1)        # [B, 1, h, w, h_s, w_s]
         B, _, h, w, h_s, w_s = corr.shape
@@ -87,7 +91,10 @@ class MatchNet(nn.Module):
         attn = F.softmax( corr2d*self.temp, dim=-1 )
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
         weighted_v = weighted_v.view(B, -1, h, w)
-        return weighted_v
+        if ret_corr:
+            return weighted_v, corr2d
+        else:
+            return weighted_v
 
     def run_match_model(self,corr4d):
         corr4d = MutualMatching(corr4d)
@@ -95,3 +102,62 @@ class MatchNet(nn.Module):
         corr4d = MutualMatching(corr4d)
         return corr4d
 
+#############
+
+r""" Conovlutional Hough matching layers """
+
+
+class CHMLearner(nn.Module):
+
+    def __init__(self, ktype, feat_dim, temp=20.0):
+        super(CHMLearner, self).__init__()
+        self.temp = temp
+
+        # Scale-wise feature transformation
+        self.scales = [0.5, 1, 2]
+        self.conv2ds = nn.ModuleList([nn.Conv2d(feat_dim, feat_dim // 4, kernel_size=3, padding=1, bias=False) for _ in self.scales])
+
+        # CHM layers
+        ksz_translation = 5
+        ksz_scale = 3
+        self.chm6d = CHM6d(1, 1, ksz_scale, ksz_translation, ktype)
+        self.chm4d = CHM4d(1, 1, ksz_translation, ktype, bias=True)
+
+        # Activations
+        self.relu = nn.ReLU(inplace=True)
+        self.sigmoid = nn.Sigmoid()
+        self.softplus = nn.Softplus()
+
+    def forward(self, src_feat, trg_feat, v, ig_mask=None, ret_corr=False):
+
+        corr = Correlation.build_correlation6d(src_feat, trg_feat, self.scales, self.conv2ds).unsqueeze(1)
+        bsz, ch, s, s, h, w, h, w = corr.size()
+
+        # CHM layer (6D)
+        corr = self.chm6d(corr)
+        corr = self.sigmoid(corr)
+
+        # Scale-space maxpool
+        corr = corr.view(bsz, -1, h, w, h, w).max(dim=1)[0]
+        corr = Geometry.interpolate4d(corr, [h * 2, w * 2]).unsqueeze(1)
+
+        # CHM layer (4D)
+        corr = self.chm4d(corr).squeeze(1)
+
+        # To ensure non-negative vote scores & soft cyclic constraints
+        corr = self.softplus(corr)
+        corr = Correlation.mutual_nn_filter(corr.view(bsz, corr.size(-1) ** 2, corr.size(-1) ** 2).contiguous())
+
+        corr2d = corr.view(bsz, h*w, h*w)
+
+        if ig_mask is not None:
+            ig_mask = ig_mask.view(bsz, -1, h*w).expand(corr2d.shape)
+            corr2d[ig_mask == True] = 0.0001  # [B, N_q, N_s]
+        attn = F.softmax(corr2d * self.temp, dim=-1)
+        weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
+        weighted_v = weighted_v.view(bsz, -1, h, w)
+
+        if ret_corr:
+            return weighted_v, corr2d
+        else:
+            return weighted_v

@@ -98,7 +98,11 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer =======
-    FusionNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True).cuda()
+    if args.crm_type == 'chm':
+        FusionNet = CHMLearner(ktype='psi', feat_dim=2048, temp=args.temp)
+        print('model setting kernel type {}, input feature dim {}'.format('psi', 2048))
+    else:
+        FusionNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
@@ -157,7 +161,10 @@ def main(args: argparse.Namespace) -> None:
 
             if not args.ignore:
                 ig_mask = None
-            weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
+            if args.crm_type == 'chm':
+                weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask, ret_corr=False)
+            else:
+                weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
             out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
@@ -309,7 +316,10 @@ def validate_epoch(args, val_loader, model, Net):
 
         if not args.ignore:
             ig_mask = None
-        weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
+        if args.crm_type == 'chm':
+            weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
+        else:
+            weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
         out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
         pd_q1 = model.classifier(weighted_v)
         pd_q = model.classifier(out)
