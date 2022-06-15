@@ -162,6 +162,8 @@ def main(args: argparse.Namespace) -> None:
             if not args.ignore:
                 ig_mask = None
             if args.crm_type == 'chm':
+                fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
+                fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
                 weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask, ret_corr=False)
             else:
                 weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
@@ -317,6 +319,8 @@ def validate_epoch(args, val_loader, model, Net):
         if not args.ignore:
             ig_mask = None
         if args.crm_type == 'chm':
+            fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
+            fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
             weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
         else:
             weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)

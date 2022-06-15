@@ -133,13 +133,20 @@ class CHM6d(_ConvNd):
                                     1, bias=True, padding_mode='zeros')
 
         # Zero kernel initialization
-        self.zero_kernel4d = torch.zeros((ksz4d, ksz4d, ksz4d, ksz4d)).cuda()
-        self.zero_kernel6d = torch.zeros((ksz6d, ksz6d, ksz4d, ksz4d, ksz4d, ksz4d)).cuda()
+        self.zero_kernel4d = torch.zeros((ksz4d, ksz4d, ksz4d, ksz4d))
+        self.zero_kernel6d = torch.zeros((ksz6d, ksz6d, ksz4d, ksz4d, ksz4d, ksz4d))
+        if torch.cuda.is_available():
+            self.zero_kernel4d = self.zero_kernel4d.cuda()
+            self.zero_kernel6d = self.zero_kernel6d.cuda()
+
         self.nkernels = in_channels * out_channels
 
         # Initialize kernel indices
         # Indices in scale-space where 4D convolutions are performed (3 by 3 scale-space)
-        self.diagonal_idx = [torch.tensor(x).cuda() for x in [[6], [3, 7], [0, 4, 8], [1, 5], [2]]]
+        if torch.cuda.is_available():
+            self.diagonal_idx = [torch.tensor(x).cuda() for x in [[6], [3, 7], [0, 4, 8], [1, 5], [2]]]
+        else:
+            self.diagonal_idx = [torch.tensor(x) for x in [[6], [3, 7], [0, 4, 8], [1, 5], [2]]]
         param_dict4d = chm_kernel.KernelGenerator(ksz4d, ktype).generate()
         param_shared =  param_dict4d is not None
 
