@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 r""" 4D and 6D convolutional Hough matching layers """
 
 from torch.nn.modules.conv import _ConvNd
@@ -102,7 +104,7 @@ class CHM4d(_ConvNd):
             for i in range(len(weights)):
                 weights[i] = weights[i] * len( self.param_idx[i] )
             # for weight, param_idx in zip(weights.sort()[0], self.param_idx):    weight *= len(param_idx)    # modify the weight in place?
-               
+
             self.weight = nn.Parameter(weights)
         else:  # full kernel initialziation
             self.param_idx = None
@@ -121,12 +123,11 @@ class CHM4d(_ConvNd):
         if self.param_idx is None:
             kernel = self.weight
         else:
-            kernel = torch.zeros_like(self.zero_kernel4d)
-            for idx, pdx in enumerate(self.param_idx):
-                kernel = kernel.view(-1, ksz, ksz, ksz, ksz)
-                for jdx, kernel_single in enumerate(kernel):
+            kernel = torch.zeros_like(self.zero_kernel4d).view(-1, ksz**4)  # [1, 1, 5, 5, 5, 5] -> [1, 5, 5, 5, 5] 为了支持有多个kernel的情况
+            for idx, pdx in enumerate(self.param_idx):     # list of list (sublist 为 row_idx of i, j, k, l share weight)
+                for jdx in range(len(kernel)):
                     weight = self.weight[idx + jdx * len(self.param_idx)].repeat(len(pdx)) / len(pdx)
-                    kernel_single.view(-1)[pdx] = kernel_single.view(-1)[pdx] + weight                         # debug
+                    kernel[jdx, pdx] = kernel[jdx, pdx] + weight                        
             kernel = kernel.view(self.in_channels, self.out_channels, ksz, ksz, ksz, ksz)
         return kernel
 
@@ -176,7 +177,7 @@ class CHM6d(_ConvNd):
             for param_dict6d in self.param_dict6d:
                 weights = torch.abs(torch.randn(len(self.param_idx))) * 1e-3    # each cross scale combination's conv4d params [55]
                 for i in range(len(weights)):
-                    weights[i] = weights[i] * (len(self.param_idx[i]) * len(param_dict6d))  #
+                    weights[i] = weights[i] * (len(self.param_idx[i]) * len(param_dict6d))  # 为什么要先乘再除
                 self.param.append(nn.Parameter(weights))        # ordered by param_dict6d, param_dict4d    # total 55*
             self.param = nn.ParameterList(self.param)    # size:[sn, ln], row idx: scale_offset(param_dict6d) column idx
         else:  # full kernel initialziation
@@ -197,11 +198,11 @@ class CHM6d(_ConvNd):
 
         kernel6d = torch.zeros_like(self.zero_kernel6d)
         for idx, (param, param_dict6d) in enumerate(zip(self.param, self.param_dict6d)):
-            ksz4d = self.kernel_size[-1]
-            kernel4d = torch.zeros_like(self.zero_kernel4d)
-            for jdx, pdx in enumerate(self.param_idx):
-                kernel4d.view(-1)[pdx] += ((param[jdx] / len(pdx)) / len(param_dict6d))
-            kernel6d.view(-1, ksz4d, ksz4d, ksz4d, ksz4d)[param_dict6d] += kernel4d.view(ksz4d, ksz4d, ksz4d, ksz4d)
+            ksz4d = self.kernel_size[-1]   # 此处param只 针对当前scale pair (所有share 参数的scale pair)
+            kernel4d = torch.zeros_like(self.zero_kernel4d).view(-1)   # [5, 5, 5, 5] -> [525]
+            for jdx, pdx in enumerate(self.param_idx):  # list of list (sublist 为 row_idx of i, j, k, l share weight)
+                kernel4d[pdx] = ((param[jdx] / len(pdx)) / len(param_dict6d))
+            kernel6d.view(-1, ksz4d, ksz4d, ksz4d, ksz4d)[param_dict6d] = kernel4d.view(ksz4d, ksz4d, ksz4d, ksz4d)   # [9, 5, 5, 5]
         kernel6d = kernel6d.unsqueeze(0).unsqueeze(0)
 
         return kernel6d
