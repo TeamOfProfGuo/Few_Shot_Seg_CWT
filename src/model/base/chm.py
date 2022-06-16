@@ -20,7 +20,7 @@ def fast4d(corr, kernel, bias=None):
         out_corr = out_corr.cuda()
     corr = corr.transpose(1, 2).contiguous().view(bsz * srch, ch, srcw, trgh, trgw)
 
-    for pidx, k3d in enumerate(kernel.permute(2, 0, 1, 3, 4, 5)):
+    for pidx, k3d in enumerate(kernel.permute(2, 0, 1, 3, 4, 5)):  # kernel: [ch, 1, 5, 5, 5, 5]
         inter_corr = F.conv3d(corr, k3d, bias=None, stride=1, padding=psz)
         inter_corr = inter_corr.view(bsz, srch, out_channels, srcw, trgh, trgw).transpose(1, 2).contiguous()
 
@@ -127,7 +127,7 @@ class CHM4d(_ConvNd):
             for idx, pdx in enumerate(self.param_idx):     # list of list (sublist 为 row_idx of i, j, k, l share weight)
                 for jdx in range(len(kernel)):
                     weight = self.weight[idx + jdx * len(self.param_idx)].repeat(len(pdx)) / len(pdx)
-                    kernel[jdx, pdx] = kernel[jdx, pdx] + weight                        
+                    kernel[jdx, pdx] = kernel[jdx, pdx] + weight
             kernel = kernel.view(self.in_channels, self.out_channels, ksz, ksz, ksz, ksz)
         return kernel
 

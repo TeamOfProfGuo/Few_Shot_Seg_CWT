@@ -53,7 +53,7 @@ MODEL:
   model_dir: model_ckpt
   crm_type: chm
   temp: 20.0
-  rmid: mid4        # nr, mid3, mid4
+  rmid: mid3        # nr, mid3, mid4
   ignore: False   # ignore pixels based on ig_mask
 
 Classifier:
@@ -75,4 +75,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: chm_l4_nig
+  exp_name: chm_l3_nig

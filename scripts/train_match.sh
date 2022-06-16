@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=chm
+#SBATCH --job-name=chm3
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
