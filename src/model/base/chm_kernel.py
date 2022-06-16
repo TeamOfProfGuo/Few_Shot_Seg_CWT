@@ -37,7 +37,7 @@ class KernelGenerator:
 
     def generate_chm_kernel(self):
         param_dict = {}
-        for idx in self.idx4d:
+        for idx in self.idx4d:  # [625, 4], each row is a combination of src_ij and trg_ij
             src_i, src_j, trg_i, trg_j = idx
             d_tail = Geometry.get_distance((src_i, src_j), self.center)
             d_head = Geometry.get_distance((trg_i, trg_j), self.center)
@@ -47,8 +47,8 @@ class KernelGenerator:
             src_crd = (src_i, src_j)
             trg_crd = (trg_i, trg_j)
 
-            key = self.build_key(horz_quad, vert_quad, d_head, d_tail, src_crd, trg_crd, d_off)
-            coord1d = Geometry.get_coord1d((src_i, src_j, trg_i, trg_j), self.ksz)
+            key = self.build_key(horz_quad, vert_quad, d_head, d_tail, src_crd, trg_crd, d_off)  # 'psi': [d_max, d_min, d_off]
+            coord1d = Geometry.get_coord1d((src_i, src_j, trg_i, trg_j), self.ksz)               # it's corresponding idx in self.idx4d
 
             if param_dict.get(key) is None: param_dict[key] = []
             param_dict[key].append(coord1d)

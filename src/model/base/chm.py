@@ -97,10 +97,12 @@ class CHM4d(_ConvNd):
 
         if param_shared:
             # Initialize the shared parameters (multiplied by the number of times being shared)
-            self.param_idx = init_param_idx4d(param_dict4d)
-            weights = torch.abs(torch.randn(len(self.param_idx) * self.nkernels)) * 1e-3
-            for weight, param_idx in zip(weights.sort()[0], self.param_idx):
-                weight *= len(param_idx)
+            self.param_idx = init_param_idx4d(param_dict4d)   # list of list of idx_1d of the 'param4d params sharing wt', 'psi': 55 learnable params
+            weights = torch.abs(torch.randn(len(self.param_idx) * self.nkernels)) * 1e-3  # [55]
+            for i in range(len(weights)):
+                weights[i] = weights[i] * len( self.param_idx[i] )
+            # for weight, param_idx in zip(weights.sort()[0], self.param_idx):    weight *= len(param_idx)    # modify the weight in place?
+               
             self.weight = nn.Parameter(weights)
         else:  # full kernel initialziation
             self.param_idx = None
@@ -124,7 +126,7 @@ class CHM4d(_ConvNd):
                 kernel = kernel.view(-1, ksz, ksz, ksz, ksz)
                 for jdx, kernel_single in enumerate(kernel):
                     weight = self.weight[idx + jdx * len(self.param_idx)].repeat(len(pdx)) / len(pdx)
-                    kernel_single.view(-1)[pdx] = kernel_single.view(-1)[pdx] + weight                         # debug 
+                    kernel_single.view(-1)[pdx] = kernel_single.view(-1)[pdx] + weight                         # debug
             kernel = kernel.view(self.in_channels, self.out_channels, ksz, ksz, ksz, ksz)
         return kernel
 
@@ -169,13 +171,13 @@ class CHM6d(_ConvNd):
                 self.param_dict6d = [torch.tensor(i) for i in self.param_dict6d]
 
             # Initialize the shared parameters (multiplied by the number of times being shared)
-            self.param_idx = init_param_idx4d(param_dict4d)
+            self.param_idx = init_param_idx4d(param_dict4d)     # list of list for idx1d of the (4d kernel weight sharing)
             self.param = []
             for param_dict6d in self.param_dict6d:
-                weights = torch.abs(torch.randn(len(self.param_idx))) * 1e-3
-                for weight, param_idx in zip(weights, self.param_idx):
-                    weight *= (len(param_idx) * len(param_dict6d))
-                self.param.append(nn.Parameter(weights))
+                weights = torch.abs(torch.randn(len(self.param_idx))) * 1e-3    # each cross scale combination's conv4d params [55]
+                for i in range(len(weights)):
+                    weights[i] = weights[i] * (len(self.param_idx[i]) * len(param_dict6d))  #
+                self.param.append(nn.Parameter(weights))        # ordered by param_dict6d, param_dict4d    # total 55*
             self.param = nn.ParameterList(self.param)    # size:[sn, ln], row idx: scale_offset(param_dict6d) column idx
         else:  # full kernel initialziation
             self.param_idx = None

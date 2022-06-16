@@ -130,23 +130,23 @@ class CHMLearner(nn.Module):
 
     def forward(self, src_feat, trg_feat, v, ig_mask=None, ret_corr=False):
 
-        corr = Correlation.build_correlation6d(src_feat, trg_feat, self.scales, self.conv2ds).unsqueeze(1)
+        corr = Correlation.build_correlation6d(src_feat, trg_feat, self.scales, self.conv2ds).unsqueeze(1)   # [1, 1, 3, 3, 30, 30, 30 30]
         bsz, ch, s, s, h, w, h, w = corr.size()
 
         # CHM layer (6D)
         corr = self.chm6d(corr)
-        corr = self.sigmoid(corr)
+        corr = self.sigmoid(corr)   # [1, 1, 3, 3, 30, 30, 30 30]
 
         # Scale-space maxpool
-        corr = corr.view(bsz, -1, h, w, h, w).max(dim=1)[0]
-        corr = Geometry.interpolate4d(corr, [h * 2, w * 2]).unsqueeze(1)
+        corr = corr.view(bsz, -1, h, w, h, w).max(dim=1)[0]    # max pool along scale  [1, 30, 30, 30, 30]
+        corr = Geometry.interpolate4d(corr, [h * 2, w * 2]).unsqueeze(1)             # [1, 1, 60, 60, 60, 60]
 
         # CHM layer (4D)
-        corr = self.chm4d(corr).squeeze(1)
+        corr = self.chm4d(corr).squeeze(1)     # [1, 60, 60, 60, 60]
 
         # To ensure non-negative vote scores & soft cyclic constraints
         corr = self.softplus(corr)
-        corr = Correlation.mutual_nn_filter(corr.view(bsz, corr.size(-1) ** 2, corr.size(-1) ** 2).contiguous())
+        corr = Correlation.mutual_nn_filter(corr.view(bsz, corr.size(-1) ** 2, corr.size(-1) ** 2).contiguous())  # [1, 3600, 3600]
 
         corr2d = corr.view(bsz, 4*h*w, 4*h*w)
 
