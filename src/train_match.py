@@ -99,7 +99,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ======= Transformer =======
     if args.crm_type == 'chm':
-        FusionNet = CHMLearner(ktype='psi', feat_dim=2048, temp=args.temp).cuda()
+        FusionNet = CHMLearner(ktype='psi', feat_dim=1024, temp=args.temp).cuda()
         print('model setting kernel type {}, input feature dim {}'.format('psi', 2048))
     else:
         FusionNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True).cuda()
