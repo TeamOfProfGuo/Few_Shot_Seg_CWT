@@ -6,6 +6,7 @@ from torch import nn
 import torch.nn.functional as F
 from .resnet import resnet50, resnet101
 from .vgg import vgg16_bn
+from .model_util import get_corr, get_ig_mask
 from torch.nn.utils.weight_norm import WeightNorm
 
 
@@ -224,51 +225,15 @@ class PSPNet(nn.Module):
         proj_v = f_s.view(bs, -1, height * width)
 
         # 基于attention, refine f_q, 并对query img做prediction
-        proj_q = F.normalize(fq_fea.view(bs, -1, height * width), dim=-2).permute(0, 2, 1)  # [1, 2048, hw]->[1, hw, 2048]
-        proj_k = F.normalize(fs_fea.view(bs, -1, height * width), dim=-2)  # [1, 2048, hw]
-        sim = torch.bmm(proj_q, proj_k)  # [1, 3600(q_hw), 3600(k_hw)]
+        sim = get_corr(q=fq_fea, k=fs_fea)       # [1, 3600_q, 3600_s]
         corr = torch.clone(sim).reshape(bs, height, width, height, width)                                  # return Corr
 
         # mask ignored support pixels
-        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=f_s.shape[-2:], mode='nearest')  # [1,1,h,w]
-        s_mask = (s_mask > 1).view(s_mask.shape[0], -1)  # [n_shot, hw]
+        ig_mask = get_ig_mask(sim, s_label, q_label, pd_q0, pd_s)    # [1, hw_s]
 
-        # ignore misleading points
-        pd_q_mask0 = pd_q0.argmax(dim=1)
-        q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=f_q.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
-        qf_mask = (q_mask != 255.0) * (pd_q_mask0 == 1)  # predicted qry FG
-        qb_mask = (q_mask != 255.0) * (pd_q_mask0 == 0)  # predicted qry BG
-        qf_mask = qf_mask.view(qf_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted FG
-        qb_mask = qb_mask.view(qb_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted BG
-
-        sim_qf = sim[qf_mask].reshape(1, -1, 3600)
-        if sim_qf.numel() > 0:
-            th_qf = torch.quantile(sim_qf.flatten(), 0.8)
-            sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel
-            qf_mask = sim_qf
-        else:
-            print('------ pred qf mask is empty! ------')
-            qf_mask = torch.zeros([1, 3600], dtype=torch.float).cuda()
-
-        sim_qb = sim[qb_mask].reshape(1, -1, 3600)
-        if sim_qb.numel() > 0:
-            th_qb = torch.quantile(sim_qb.flatten(), 0.8)
-            sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel, [B, 3600]
-            qb_mask = sim_qb
-        else:
-            print('------ pred qb mask is empty! ------')
-            qb_mask = torch.zeros([1, 3600], dtype=torch.float).cuda()
-
-        sf_mask = pd_s.argmax(dim=1).view(1, 3600)
-        null_mask = torch.zeros([1, 3600], dtype=torch.bool)
-        null_mask = null_mask.cuda() if torch.cuda.is_available() else null_mask
-        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
-        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else null_mask
-        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel() > 0 and sim_qb.numel() > 0 else null_mask
-        ig_mask = ig_mask1 | ig_mask2 | ig_mask3 | s_mask
-
-        ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
-        sim[ig_mask == True] = 0.00001
+        # calculate weighted output
+        ig_mask_full = ig_mask.unsqueeze(1).expand(sim.shape)        # [1, hw_q, hw_s]
+        sim[ig_mask_full == True] = 0.00001
 
         if self.args.get('dist','dot')=='cos':
             proj_v = F.normalize(proj_v, dim=1)
@@ -283,8 +248,6 @@ class PSPNet(nn.Module):
 
         if ret_corr == 'cr':
             return pred_q_label, [corr, weighted_v]
-        elif ret_corr == 'cr_mk':
-            return pred_q_label, [corr, weighted_v], [qf_mask, qb_mask]
         elif ret_corr == 'cr_ig':
             return pred_q_label, [corr, weighted_v], ig_mask
         else:
@@ -294,46 +257,11 @@ class PSPNet(nn.Module):
         bs, C, height, width = fq_fea.size()
 
         # 基于attention, refine f_q, 并对query img做prediction
-        proj_q = F.normalize(fq_fea.view(bs, -1, height * width), dim=-2)  # [1, 2048, hw]
-        proj_k = F.normalize(fs_fea.view(bs, -1, height * width), dim=-2)  # [1, 2048, hw]
-        proj_q = proj_q.permute(0, 2, 1)  # [1, 2048, hw] -> [1, hw, 2048]
-        sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
+        sim = get_corr(q=fq_fea, k=fs_fea)   # [1, 3600 (q_hw), 3600(k_hw)]
         corr = torch.clone(sim.reshape(bs, height, width, height, width))
 
         # mask ignored pixels
-        s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=fq_fea.shape[-2:], mode='nearest')  # [1,1,h,w]
-        s_mask = (s_mask > 1).view(s_mask.shape[0], 1, -1)  # [n_shot, 1, hw]
-        s_mask = s_mask.expand(sim.shape)  # [1, q_hw, hw]
-        sim[s_mask == True] = 0.00001
-
-        # ignore misleading points
-        pd_q_mask0 = pd_q0.argmax(dim=1)
-        q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=fq_fea.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
-        qf_mask = (q_mask != 255.0) * (pd_q_mask0 == 1)  # predicted qry FG
-        qb_mask = (q_mask != 255.0) * (pd_q_mask0 == 0)  # predicted qry BG
-        qf_mask = qf_mask.view(qf_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted FG
-        qb_mask = qb_mask.view(qb_mask.shape[0], -1, 1).expand(sim.shape)  # 保留query predicted BG
-
-        sim_qf = sim[qf_mask].reshape(1, -1, 3600)
-        if sim_qf.numel() > 0:
-            th_qf = torch.quantile(sim_qf.flatten(), 0.8)
-            sim_qf = torch.mean(sim_qf, dim=1)  # 取平均 对应support img 与Q前景相关 所有pixel  # [B, 3600]
-        else:
-            print('------ pred qf mask is empty! ------')
-        sim_qb = sim[qb_mask].reshape(1, -1, 3600)
-        if sim_qb.numel() > 0:
-            th_qb = torch.quantile(sim_qb.flatten(), 0.8)
-            sim_qb = torch.mean(sim_qb, dim=1)  # 取平均 对应support img 与Q背景相关 所有pixel
-        else:
-            print('------ pred qb mask is empty! ------')
-        sf_mask = pd_s.argmax(dim=1).view(1, 3600)
-
-        null_mask = torch.zeros([1, 3600], dtype=torch.bool)
-        null_mask = null_mask.cuda() if torch.cuda.is_available() else null_mask
-        ig_mask1 = (sim_qf > th_qf) & (sf_mask == 0) if sim_qf.numel() > 0 else null_mask
-        ig_mask3 = (sim_qb > th_qb) & (sf_mask == 1) if sim_qb.numel() > 0 else null_mask
-        ig_mask2 = (sim_qf > th_qf) & (sim_qb > th_qb) if sim_qf.numel() > 0 and sim_qb.numel() > 0 else null_mask
-        ig_mask = ig_mask1 | ig_mask2 | ig_mask3 | s_mask[:,1,:]
+        ig_mask = get_ig_mask(sim, s_label, q_label, pd_q0, pd_s)  # # [B, 3600_s]
 
         if ret_corr:
             return ig_mask, corr
