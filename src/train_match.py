@@ -16,7 +16,7 @@ from .model import *
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter
+from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
 
@@ -117,6 +117,7 @@ def main(args: argparse.Namespace) -> None:
         train_iou_meter1 = AverageMeter()
         train_loss_meter0 = AverageMeter()
         train_iou_meter0 = AverageMeter()
+        train_iou_compare = CompareMeter()
 
         iterable_train_loader = iter(train_loader)
         for i in range(1, len(train_loader)+1):
@@ -169,7 +170,7 @@ def main(args: argparse.Namespace) -> None:
                 weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-            out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
+            out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
             pd_q = model.classifier(out)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -198,6 +199,7 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter0.update((IoUf[0]+IoUb[0])/2, 1)
             train_loss_meter1.update(q_loss1.item() / args.batch_size, 1)
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
+            train_iou_compare.update(IoUf[1], IoUf[0])
 
             if i%100==0 or (epoch==1 and i%10==0):
                 log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1b {:.2f} IoUb1b {:.2f} '
@@ -205,6 +207,9 @@ def main(args: argparse.Namespace) -> None:
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2], IoUf['1b'], IoUb['1b'],
                     q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
             if i%1190==0:
+                log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
+                    train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
+                train_iou_compare.reset()
                 val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=FusionNet)
 
                 # Model selection
@@ -273,6 +278,8 @@ def validate_epoch(args, val_loader, model, Net):
     cls_union1b = defaultdict(int)
     IoU1b = defaultdict(float)
 
+    val_iou_compare = CompareMeter()
+
     for e in range(args.test_num):
 
         iter_num += 1
@@ -324,7 +331,7 @@ def validate_epoch(args, val_loader, model, Net):
             weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
         else:
             weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
-        out = (weighted_v * 0.2 + f_q) / (1 + 0.2)
+        out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
         pd_q1 = model.classifier(weighted_v)
         pd_q = model.classifier(out)
         pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
@@ -332,14 +339,17 @@ def validate_epoch(args, val_loader, model, Net):
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
-        for (cls_intersection_, cls_union_, IoU_, pred) in \
-                [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection1b, cls_union1b, IoU1b, pred_q1_b)]:
+        for id, (cls_intersection_, cls_union_, IoU_, pred) in \
+                enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
+                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection1b, cls_union1b, IoU1b, pred_q1_b)] ):
             intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
             cls_union_[curr_cls] += union[1]                # only consider the FG
             IoU_[curr_cls] = cls_intersection_[curr_cls] / (cls_union_[curr_cls] + 1e-10)   # cls wise IoU
+            if id==0: iouf0 = intersection[1]/union[1]     # fg IoU for the current episode
+            elif id==1: iouf1 = intersection[1]/union[1]
+        val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
 
         criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
         loss1 = criterion_standard(pred_q1, q_label)
@@ -359,7 +369,8 @@ def validate_epoch(args, val_loader, model, Net):
         mIoU0, mIoU1, mIoU, mIoU1b, runtime/60))
     for class_ in cls_union:
         log("Class {} : {:.4f}".format(class_, IoU[class_]))
-    log('\n')
+    log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
+        val_iou_compare.win_cnt, val_iou_compare.cnt, val_iou_compare.diff_avg))
 
     return mIoU, mIoU1, loss_meter.avg
 

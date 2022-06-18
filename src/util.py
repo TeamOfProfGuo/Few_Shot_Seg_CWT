@@ -204,6 +204,26 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
+class CompareMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.cnt = 0
+        self.win_cnt = 0
+        self.diff_sum = 0
+        self.diff_avg = 0
+
+    def update(self, score1, score0):
+        self.val = (score1, score0)
+        self.cnt += 1
+        self.win_cnt += (score1 >score0 )
+        self.diff_sum += score1-score0
+        self.diff_avg = self.diff_sum / self.cnt
+
+
 def batch_intersectionAndUnionGPU(
         logits: torch.Tensor,
         target: torch.Tensor,

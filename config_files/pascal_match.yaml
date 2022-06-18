@@ -32,7 +32,7 @@ TRAIN:
   mixup: False
   lr_stepsize: 30
   momentum: 0.9
-  gamma: 0.1
+  gamma: 0.1     # for scheduler
   nesterov: True
   weight_decay: 0.0001
   main_optim: SGD
@@ -51,10 +51,11 @@ MODEL:
   backbone_dim: 2048
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
-  crm_type: chm
+  crm_type: nc    # model to refine corr: chm, nc
   temp: 20.0
-  rmid: mid3        # nr, mid3, mid4
+  rmid: mid4        # nr, mid3, mid4
   ignore: False   # ignore pixels based on ig_mask
+  att_wt: 0.3
 
 Classifier:
   dist: cosN
@@ -75,4 +76,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: chm_l3_nig
+  exp_name: match_l4_nig_w3
