@@ -55,7 +55,7 @@ MODEL:
   temp: 20.0
   rmid: mid4        # nr, mid3, mid4
   ignore: False   # ignore pixels based on ig_mask
-  att_wt: 0.3
+  att_wt: 0.4
 
 Classifier:
   dist: cosN
@@ -76,4 +76,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: match_l4_nig_w3_lr1
+  exp_name: match_l4_nig_w4_lr1
