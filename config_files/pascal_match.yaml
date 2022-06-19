@@ -27,7 +27,7 @@ TRAIN:
   log_freq : 50
   save_models: True
   cls_lr: 0.0025
-  trans_lr: 0.0015
+  trans_lr: 0.001
   scale_lr: 1.0
   mixup: False
   lr_stepsize: 30
@@ -76,4 +76,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: match_l4_nig_w3
+  exp_name: match_l4_nig_w3_lr1
