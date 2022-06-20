@@ -99,9 +99,9 @@ def main(args: argparse.Namespace) -> None:
             param.requires_grad = False
 
     # ========= Pretrained NCNet  ==========
-    CorrNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True)
+    CorrNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True).cuda()
     fname = './results/fuse_pascal/resnet50/split0_shot1/match_l4_nig/best1.pth'
-    pre_weight = torch.load(fname, map_location=lambda storage, location: storage)['state_dict']
+    pre_weight = torch.load(fname)['state_dict']
     CorrNet.load_state_dict(pre_weight, strict=True)
 
     # ========= Data  ==========
