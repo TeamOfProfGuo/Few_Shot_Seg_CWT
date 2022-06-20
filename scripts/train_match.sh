@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=ig
+#SBATCH --job-name=mh3
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2

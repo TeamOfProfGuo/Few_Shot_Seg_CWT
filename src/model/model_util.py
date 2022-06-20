@@ -1,4 +1,3 @@
-# encoding:utf-8
 
 import torch
 import torch.nn.functional as F
@@ -14,11 +13,8 @@ def get_corr(q, k):
     return sim
 
 
-def get_ig_mask(sim, s_label, q_label, pd_q0, pd_s): # sim [1, q_hw, k_hw]
-    B, _, h, w = pd_q0.shape[-2:]
-    if sim.dim() == 5:
-        sim = sim.reshape(B, h*w, h*w)
-
+def get_ig_mask(sim, s_label, q_label, pd_q0, pd_s):
+    h, w = pd_q0.shape[-2:]
     # mask ignored support pixels
     s_mask = F.interpolate(s_label.unsqueeze(1).float(), size=(h,w), mode='nearest')  # [1,1,h,w]
     s_mask = (s_mask > 1).view(s_mask.shape[0], -1)  # [n_shot, hw]
@@ -58,19 +54,3 @@ def get_ig_mask(sim, s_label, q_label, pd_q0, pd_s): # sim [1, q_hw, k_hw]
     ig_mask = ig_mask1 | ig_mask2 | ig_mask3 | s_mask
 
     return ig_mask  # [B, hw_s]
-
-
-def att_weighted_out(sim, v, temp=20.0, ig_mask=None):
-    B, d_v, h, w = v.shape
-    if sim.dim() == 5:
-        sim = sim.reshape(B, h*w, h*w)  # [1, hw_q, hw_s]
-
-    if ig_mask:  # not None / False   [B, hw_s]
-        ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
-        sim[ig_mask == True] = 0.0001
-
-    attn = F.softmax(sim * temp, dim=-1)
-    weighted_v = torch.bmm(v.view(B, d_v, h*w), attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
-    weighted_v = weighted_v.view(B, -1, h, w)
-    return weighted_v
-
