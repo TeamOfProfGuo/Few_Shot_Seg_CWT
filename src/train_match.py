@@ -155,10 +155,8 @@ def main(args: argparse.Namespace) -> None:
                 idx = int(args.rmid[-1]) - 2
             fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
             fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-            pd_q_b, ret_corr, ig_mask = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr='cr_ig')
-            corr, weighted_v_b = ret_corr
-            pd_q1_b = model.classifier(weighted_v_b)
-            pred_q1_b = F.interpolate(pd_q1_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)     # weighted_v based on original corr matrix
+            B, _, h, w = fq_fea.shape
+            corr = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
 
             if not args.ignore:
                 ig_mask = None
@@ -170,6 +168,7 @@ def main(args: argparse.Namespace) -> None:
                 weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+
             out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
             pd_q = model.classifier(out)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
@@ -191,7 +190,7 @@ def main(args: argparse.Namespace) -> None:
 
             # Print loss and mIoU
             IoUb, IoUf = dict(), dict()
-            for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2), (pred_q1_b, '1b')]:
+            for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2)]:
                 intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, args.num_classes_tr, 255)
                 IoUb[idx], IoUf[idx] = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
@@ -202,9 +201,9 @@ def main(args: argparse.Namespace) -> None:
             train_iou_compare.update(IoUf[1], IoUf[0])
 
             if i%100==0 or (epoch==1 and i%10==0):
-                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1b {:.2f} IoUb1b {:.2f} '
+                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} '
                     'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
-                    epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2], IoUf['1b'], IoUb['1b'],
+                    epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
                     q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
             if i%1190==0:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
@@ -318,10 +317,8 @@ def validate_epoch(args, val_loader, model, Net):
             idx = int(args.rmid[-1]) - 2
         fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
         fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-        pd_q_b, ret_corr, ig_mask = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr='cr_ig')
-        corr, weighted_v_b = ret_corr
-        pd_q1_b = model.classifier(weighted_v_b)
-        pred_q1_b = F.interpolate(pd_q1_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)  # weighted_v based on original corr
+        B, _, h, w = fq_fea.shape
+        corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
 
         if not args.ignore:
             ig_mask = None
@@ -330,13 +327,16 @@ def validate_epoch(args, val_loader, model, Net):
             fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
             weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
         else:
-            weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
-        out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
+            weighted_v, corr1 = Net(corr=corr0, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=True)
         pd_q1 = model.classifier(weighted_v)
-        pd_q = model.classifier(out)
         pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+
+        out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
+        pd_q = model.classifier(out)
         pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
+
+        ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
