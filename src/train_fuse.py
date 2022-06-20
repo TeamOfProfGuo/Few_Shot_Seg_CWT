@@ -174,8 +174,6 @@ def main(args: argparse.Namespace) -> None:
             s_mask[s_mask==255] = 0
             s_mask = F.interpolate(s_mask.unsqueeze(1).float(), (30, 30), mode='bilinear', align_corners=True)
 
-            if i>=60:
-                pdb.set_trace()
             wt = FusionNet([l_corr, h_corr], s_mask, [pd_q0.data, pd_q1.data])
             out = weighted_v * wt[:, 0:1, :, :] + f_q * wt[:, 1:2, :, :]
             pd_q = model.classifier(out)
@@ -205,7 +203,7 @@ def main(args: argparse.Namespace) -> None:
             IoUf1, IoUb1 = (intersection1 / (union1 + 1e-10)).cpu().numpy()  # mean of BG and FG
             train_iou_meter1.update( (IoUf1+IoUb1)/2, 1)
 
-            if i%100==0 or (epoch==1 and i%10==0):
+            if i%100==0 or (epoch==1 and i<=1190):
                 log('Epoch {} Iter {} IoUf0 {:.2f} IoUb0 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} q_loss {:.2f} avg_wt {:.2f} std_wt {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf0, IoUb0, IoUf, IoUb, IoUf1, IoUb1, q_loss, torch.mean(wt[:,0:1, :, :]), torch.std(wt[:,0:1, :, :]), optimizer_meta.param_groups[0]['lr']))
             if i%1190==0:
@@ -223,9 +221,6 @@ def main(args: argparse.Namespace) -> None:
                                     'optimizer': optimizer_meta.state_dict()}, filename_transformer)
 
                 log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
-
-            print(i)
-            pass 
 
         log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}==========='.format(
             epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_iou_meter.avg, train_loss_meter0.avg, train_loss_meter.avg))
