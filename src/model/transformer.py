@@ -297,19 +297,19 @@ class FuseNet1(nn.Module):
         )
         self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
 
-        in_dim = im_size*im_size * 3
+        in_dim = im_size*im_size * 3 + 4
         self.att = nn.Sequential(
             nn.Conv2d(in_dim, mid_dim, kernel_size=1, padding=0),
             nn.ReLU(),
             nn.Conv2d(mid_dim, 2, kernel_size=1, padding=0)
         )
 
-    def forward(self, corr1, corr2, s_mask):    # corr: [1, 60, 60, 60, 60], s_mask: [1, 1, 60, 60]
-        B, h, w, h_s, w_s = corr1.shape
-        B, c, h_sm, w_sm = s_mask.shape      # ignore should be considered as BG
+    def forward(self, corr_lst, s_mask, pd_lst):    # corr: [1, 60, 60, 60, 60], s_mask: [1, 1, 60, 60]
+        B, h, w, h_s, w_s = corr_lst[0].shape
+        B, c, h_sm, w_sm = s_mask.shape             # ignore should be considered as BG
 
         att_in = []
-        for corr in [corr1, corr2]:
+        for corr in corr_lst:
             corr = corr.unsqueeze(1)    # [B, 1, h, w, h_s, w_s]
             corr = self.conv4d(corr)    # [B, 1, h, w, 30, 30]
             corr = corr.reshape(B, h, w, self.im_size**2).permute(0, 3, 1, 2)   # [B, 900, h, w]
@@ -319,6 +319,9 @@ class FuseNet1(nn.Module):
             s_mask = self.pool(s_mask)  # [B, 1, 30, 30]
         s_mask = s_mask.view(B, self.im_size**2, 1, 1).expand(-1, -1, h, w)   # [B, 900, h, w]
         att_in.append(s_mask)
+
+        for pd in pd_lst:
+            att_in.append(pd)           # [B, 2, 60]
 
         att_in = torch.cat(att_in, dim=1)      # [B, 1800, h, w]
         wt = self.att(att_in)                  # [B, 2, h, w]
