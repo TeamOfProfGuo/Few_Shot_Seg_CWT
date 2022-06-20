@@ -174,6 +174,8 @@ def main(args: argparse.Namespace) -> None:
             s_mask[s_mask==255] = 0
             s_mask = F.interpolate(s_mask.unsqueeze(1).float(), (30, 30), mode='bilinear', align_corners=True)
 
+            if i>=60:
+                pdb.set_trace()
             wt = FusionNet([l_corr, h_corr], s_mask, [pd_q0.data, pd_q1.data])
             out = weighted_v * wt[:, 0:1, :, :] + f_q * wt[:, 1:2, :, :]
             pd_q = model.classifier(out)
@@ -221,6 +223,9 @@ def main(args: argparse.Namespace) -> None:
                                     'optimizer': optimizer_meta.state_dict()}, filename_transformer)
 
                 log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
+
+            print(i)
+            pass 
 
         log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, mIoU {:.2f}, loss0 {:.2f}, loss {:.2f}==========='.format(
             epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_iou_meter.avg, train_loss_meter0.avg, train_loss_meter.avg))
