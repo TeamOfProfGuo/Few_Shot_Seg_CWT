@@ -92,7 +92,7 @@ class MatchNet(nn.Module):
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
         weighted_v = weighted_v.view(B, -1, h, w)
         if ret_corr:
-            return weighted_v, corr2d
+            return weighted_v, corr2d.reshape(B, h, w, h_s, w_s)
         else:
             return weighted_v
 
