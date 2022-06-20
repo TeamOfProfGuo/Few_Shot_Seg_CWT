@@ -180,9 +180,9 @@ def main(args: argparse.Namespace) -> None:
             pred_q = F.interpolate(pd_q , size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            wt_mask = (pred_q0.argmax(dim=1) != pred_q1.argmax(dim=1)) & (q_label != 255)
+            wt_mask = ( (pred_q0.argmax(dim=1) != pred_q1.argmax(dim=1)) & (q_label != 255) ).float()
             criterion = torch.nn.CrossEntropyLoss(ignore_index=255, reduction='none')
-            wt_mask[wt_mask==False] = 0.001
+            wt_mask[wt_mask == 0.0] = 0.001
             q_loss = torch.sum( criterion(pred_q, q_label.long()) * wt_mask ) / torch.sum(wt_mask)   # assume batch_size 1
 
             optimizer_meta.zero_grad()
