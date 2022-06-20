@@ -164,7 +164,7 @@ def main(args: argparse.Namespace) -> None:
             l_corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
             h_corr  = get_corr(q=f_q, k=f_s).reshape(B, h, w, h, w)
 
-            with torch.no_grad:
+            with torch.no_grad():
                 weighted_v, l_corr = CorrNet(corr=l_corr0, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None, ret_corr=True)    # [B, hw_q, hw_s]
                 l_corr = l_corr.reshape(B, h, w, h, w)
                 pd_q1 = model.classifier(weighted_v)
@@ -309,7 +309,7 @@ def validate_epoch(args, val_loader, model, CorrNet, Net):
         l_corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
         h_corr = get_corr(q=f_q, k=f_s).reshape(B, h, w, h, w)
 
-        with torch.no_grad:
+        with torch.no_grad():
             weighted_v, l_corr = CorrNet(corr=l_corr0, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=True)  # [B, hw_q, hw_s]
             l_corr = l_corr.reshape(B, h, w, h, w)
             pd_q1 = model.classifier(weighted_v)
