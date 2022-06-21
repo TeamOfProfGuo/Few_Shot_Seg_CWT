@@ -179,6 +179,14 @@ def main(args: argparse.Namespace) -> None:
             q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
 
+            if args.aux:
+                wt_mask = ((pred_q0.argmax(dim=1) != pred_q1.argmax(dim=1)) & (q_label != 255)).float()
+                aux_criterion = torch.nn.CrossEntropyLoss(ignore_index=255, reduction='none')
+                wt_mask[wt_mask == 0.0] = 0.001
+                aux_loss = 2.0 * torch.sum(aux_criterion(pred_q, q_label.long()) * wt_mask) / torch.sum(wt_mask)  # assume batch_size 1
+
+                q_loss1 = q_loss1 + aux_loss
+
             optimizer_meta.zero_grad()
             q_loss1.backward()
             optimizer_meta.step()
@@ -199,9 +207,9 @@ def main(args: argparse.Namespace) -> None:
 
             if i%100==0 or (epoch==1 and i%10==0):
                 log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} '
-                    'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
+                    'loss0 {:.2f} loss1 {:.2f} auxLoss {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
-                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
+                    q_loss0, q_loss1, aux_loss, optimizer_meta.param_groups[0]['lr']))
             if i%1190==0:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))

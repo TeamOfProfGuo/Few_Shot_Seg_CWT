@@ -54,7 +54,8 @@ MODEL:
   crm_type: nc    # model to refine corr: chm, nc
   temp: 20.0
   rmid: mid4        # nr, mid3, mid4
-  ignore: True   # ignore pixels based on ig_mask
+  ignore: False  # ignore pixels based on ig_mask
+  aux: True
   att_wt: 0.3
 
 Classifier:
@@ -76,4 +77,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: match_l4_ig1_w3
+  exp_name: match_l4_nig_aux
