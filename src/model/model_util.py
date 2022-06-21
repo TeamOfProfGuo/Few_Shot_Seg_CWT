@@ -67,7 +67,7 @@ def att_weighted_out(sim, v, temp=20.0, ig_mask=None):
 
     if ig_mask:  # not None / False   [B, hw_s]
         ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
-        sim[ig_mask == True] = 0.0001
+        sim[ig_mask == True] = 0.00001
 
     attn = F.softmax(sim * temp, dim=-1)
     weighted_v = torch.bmm(v.view(B, d_v, h*w), attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]

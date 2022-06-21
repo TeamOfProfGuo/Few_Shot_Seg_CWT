@@ -6,8 +6,6 @@ import time
 import random
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
 import torch.optim as optim
@@ -19,6 +17,7 @@ from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
@@ -156,16 +155,14 @@ def main(args: argparse.Namespace) -> None:
             fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
             fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
             B, _, h, w = fq_fea.shape
-            corr = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
+            corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
 
-            if not args.ignore:
-                ig_mask = None
             if args.crm_type == 'chm':
                 fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
                 fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-                weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask, ret_corr=False)
+                weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None, ret_corr=False)
             else:
-                weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=ig_mask)
+                weighted_v = FusionNet(corr=corr0, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -232,24 +229,11 @@ def main(args: argparse.Namespace) -> None:
         train_iou_meter1.reset()
         train_loss_meter1.reset()
 
-                # For debugging
-                # if i%50 == 0:
-                #     os.makedirs(trans_save_dir, exist_ok=True)
-                #     filename_transformer = os.path.join(trans_save_dir, 'debug_iter{}.pth'.format(i))
-                #
-                #     if args.save_models:
-                #         print('Saving checkpoint to: ' + filename_transformer)
-                #         torch.save({'epoch': epoch,
-                #                     'state_dict': model.state_dict(),
-                #                     'optimizer': optimizer_meta.state_dict()},
-                #                    filename_transformer)
-                #     print('save ckpt to {}'.format(filename_transformer))
-
     if args.save_models:  # 所有跑完，存last epoch
         filename_transformer = os.path.join(sv_path, 'final.pth')
         torch.save(
             {'epoch': args.epochs,
-             'state_dict': model.state_dict(),
+             'state_dict': FusionNet.state_dict(),
              'optimizer': optimizer_meta.state_dict()},
             filename_transformer)
 
@@ -320,28 +304,28 @@ def validate_epoch(args, val_loader, model, Net):
         B, _, h, w = fq_fea.shape
         corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
 
-        if not args.ignore:
-            ig_mask = None
         if args.crm_type == 'chm':
             fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
             fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-            weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
+            weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=False)
         else:
-            weighted_v, corr1 = Net(corr=corr0, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=True)
+            weighted_v, corr1 = Net(corr=corr0, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=True)
+
+        if args.ignore:
+            ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小
+            weighted_v = att_weighted_out(sim=corr1, v=f_q, temp=args.temp, ig_mask=ig_mask)
+
         pd_q1 = model.classifier(weighted_v)
         pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
         out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
         pd_q = model.classifier(out)
         pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-
-        ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection1b, cls_union1b, IoU1b, pred_q1_b)] ):
+                 (cls_intersection, cls_union, IoU, pred_q),] ):
             intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
@@ -359,14 +343,14 @@ def validate_epoch(args, val_loader, model, Net):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            mIoU1b = np.mean([IoU1b[i] for i in IoU1b])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} mIoU1b {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                iter_num, args.test_num, mIoU0, mIoU1, mIoU, mIoU1b, loss_meter=loss_meter))
+
+            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} mIoU1b {:.4f} | time used {:.1f}m.'.format(
-        mIoU0, mIoU1, mIoU, mIoU1b, runtime/60))
+    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
+        mIoU0, mIoU1, mIoU, runtime/60))
     for class_ in cls_union:
         log("Class {} : {:.4f}".format(class_, IoU[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
