@@ -15,7 +15,7 @@ def get_corr(q, k):
 
 
 def get_ig_mask(sim, s_label, q_label, pd_q0, pd_s): # sim [1, q_hw, k_hw]
-    B, _, h, w = pd_q0.shape[-2:]
+    B, _, h, w = pd_q0.shape
     if sim.dim() == 5:
         sim = sim.reshape(B, h*w, h*w)
 
