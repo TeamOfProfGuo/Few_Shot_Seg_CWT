@@ -65,7 +65,7 @@ def att_weighted_out(sim, v, temp=20.0, ig_mask=None):
     if sim.dim() == 5:
         sim = sim.reshape(B, h*w, h*w)  # [1, hw_q, hw_s]
 
-    if ig_mask:  # not None / False   [B, hw_s]
+    if ig_mask is not None:  # not None / False   [B, hw_s]
         ig_mask = ig_mask.unsqueeze(1).expand(sim.shape)
         sim[ig_mask == True] = 0.00001
 
