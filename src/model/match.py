@@ -94,6 +94,7 @@ class MatchNet(nn.Module):
             fs_fea = self.SpatialContextEncoder(fs_fea)  # [B, ch, h, w]
 
         corr = get_corr(fq_fea, fs_fea)
+        corr = corr.view(B, -1, h, w, h, w)  # [B, 1, h, w, h_s, w_s]
 
         corr4d = self.run_match_model(corr).squeeze(1)
         corr2d = corr4d.view(B, h*w, h*w)
