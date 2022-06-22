@@ -302,29 +302,29 @@ def validate_epoch(args, val_loader, model, Net):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-        if args.rmid == 'nr':
-            idx = -1
-        elif args.rmid in ['mid2', 'mid3', 'mid4']:
-            idx = int(args.rmid[-1]) - 2
-        fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
-        fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
+            if args.rmid == 'nr':
+                idx = -1
+            elif args.rmid in ['mid2', 'mid3', 'mid4']:
+                idx = int(args.rmid[-1]) - 2
+            fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
+            fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
 
-        if args.crm_type == 'chm':
-            fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-            fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-            weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=False)
-        else:
-            weighted_v, corr1 = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=True)
+            if args.crm_type == 'chm':
+                fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
+                fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
+                weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=False)
+            else:
+                weighted_v, corr1 = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=True)
 
-        if args.ignore:
-            ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小
-            weighted_v = att_weighted_out(sim=corr1, v=f_q, temp=args.temp, ig_mask=ig_mask)
+            if args.ignore:
+                ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小
+                weighted_v = att_weighted_out(sim=corr1, v=f_q, temp=args.temp, ig_mask=ig_mask)
 
-        pd_q1 = model.classifier(weighted_v)
-        pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-        out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
-        pd_q = model.classifier(out)
-        pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pd_q1 = model.classifier(weighted_v)
+            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
+            pd_q = model.classifier(out)
+            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
