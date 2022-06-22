@@ -184,6 +184,7 @@ def main(args: argparse.Namespace) -> None:
                 aux_loss = 2.0 * torch.sum(aux_criterion(pred_q, q_label.long()) * wt_mask) / torch.sum(wt_mask)  # assume batch_size 1
 
                 q_loss1 = q_loss1 + aux_loss
+            else: aux_loss=0.0
 
             optimizer_meta.zero_grad()
             q_loss1.backward()
