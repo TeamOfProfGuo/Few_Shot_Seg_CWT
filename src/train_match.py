@@ -101,7 +101,7 @@ def main(args: argparse.Namespace) -> None:
         FusionNet = CHMLearner(ktype='psi', feat_dim=1024, temp=args.temp).cuda()
         print('model setting kernel type {}, input feature dim {}'.format('psi', 2048))
     else:
-        FusionNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True).cuda()
+        FusionNet = MatchNet(temp=args.temp, cv_type='red', sce=args.sce, sym_mode=True).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
@@ -154,15 +154,13 @@ def main(args: argparse.Namespace) -> None:
                 idx = int(args.rmid[-1]) - 2
             fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
             fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-            B, _, h, w = fq_fea.shape
-            corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
 
             if args.crm_type == 'chm':
                 fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
                 fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
                 weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None, ret_corr=False)
             else:
-                weighted_v = FusionNet(corr=corr0, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None)
+                weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -309,15 +307,13 @@ def validate_epoch(args, val_loader, model, Net):
             idx = int(args.rmid[-1]) - 2
         fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
         fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-        B, _, h, w = fq_fea.shape
-        corr0 = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
 
         if args.crm_type == 'chm':
             fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
             fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
             weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=False)
         else:
-            weighted_v, corr1 = Net(corr=corr0, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=True)
+            weighted_v, corr1 = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=True)
 
         if args.ignore:
             ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小

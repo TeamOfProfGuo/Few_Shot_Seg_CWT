@@ -151,11 +151,11 @@ class ResNet(nn.Module):
         if self.deep_base:
             x = self.relu(self.bn2(self.conv2(x)))
             x = self.relu(self.bn3(self.conv3(x)))
-        x = self.maxpool(x)
+        x = self.maxpool(x)          # /4
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
+        x = self.layer1(x)           # /4
+        x = self.layer2(x)           # /8
+        x = self.layer3(x)           # /16
         if self.no_relu:
             x, x_nr = self.layer4(x)
         else:

@@ -52,11 +52,12 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
   crm_type: nc    # model to refine corr: chm, nc
+  ignore: False  # ignore pixels based on ig_mask
+  aux: False
   temp: 20.0
   rmid: mid4        # nr, mid3, mid4
-  ignore: False  # ignore pixels based on ig_mask
-  aux: True
   att_wt: 0.3
+  sce: True
 
 Classifier:
   dist: cosN
@@ -77,4 +78,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: match_l4_nig_aux
+  exp_name: match_l4_sce

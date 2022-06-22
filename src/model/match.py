@@ -5,6 +5,8 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 from .conv4d import CenterPivotConv4d, Conv4d
+from .base import SpatialContextEncoder
+from .model_util import get_corr
 
 from .base.correlation import Correlation
 from .base.geometry import Geometry
@@ -71,28 +73,40 @@ class NeighConsensus(torch.nn.Module):
 
 
 class MatchNet(nn.Module):
-    def __init__(self, temp=3.0, cv_type='red', sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
+    def __init__(self, temp=3.0, cv_type='red', sce=False, sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
         super().__init__()
         self.temp = temp
+        self.sce = sce
+        sce_ksz = 25
+        if self.sce:
+            self.SpatialContextEncoder = SpatialContextEncoder(kernel_size=sce_ksz, input_dim=sce_ksz * sce_ksz + 2048, hidden_dim=2048)
+
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
 
-    def forward(self, corr, v, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
-        if corr.dim() == 5:
-            corr = corr.unsqueeze(1)        # [B, 1, h, w, h_s, w_s]
-        B, _, h, w, h_s, w_s = corr.shape
+    def forward(self, fq_fea, fs_fea, v, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
+        B, ch, h, w = fq_fea.shape
+
+        fq_fea = F.normalize(fq_fea, dim=1)
+        fs_fea = F.normalize(fs_fea, dim=1)
+
+        if self.sce:
+            fq_fea = self.SpatialContextEncoder(fq_fea)  # [B, ch, h, w]
+            fs_fea = self.SpatialContextEncoder(fs_fea)  # [B, ch, h, w]
+
+        corr = get_corr(fq_fea, fs_fea)
 
         corr4d = self.run_match_model(corr).squeeze(1)
-        corr2d = corr4d.view(B, h*w, h_s*w_s)
+        corr2d = corr4d.view(B, h*w, h*w)
 
         if ig_mask is not None:
-            ig_mask = ig_mask.view(B, -1, h_s*w_s).expand(corr2d.shape)
+            ig_mask = ig_mask.view(B, -1, h*w).expand(corr2d.shape)
             corr2d[ig_mask==True] = 0.0001         # [B, N_q, N_s]
 
         attn = F.softmax( corr2d*self.temp, dim=-1 )
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
         weighted_v = weighted_v.view(B, -1, h, w)
         if ret_corr:
-            return weighted_v, corr2d.reshape(B, h, w, h_s, w_s)
+            return weighted_v, corr2d.reshape(B, h, w, h, w)
         else:
             return weighted_v
 
