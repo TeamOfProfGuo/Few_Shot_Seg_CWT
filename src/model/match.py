@@ -85,6 +85,8 @@ class MatchNet(nn.Module):
 
     def forward(self, fq_fea, fs_fea, v, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
         B, ch, h, w = fq_fea.shape
+        if v.dim() == 4:
+            v = v.view(B, -1, h*w)
 
         fq_fea = F.normalize(fq_fea, dim=1)
         fs_fea = F.normalize(fs_fea, dim=1)
