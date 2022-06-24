@@ -107,6 +107,8 @@ class DeTr(nn.Module):
                 qry_valid_mask = torch.stack(qry_valid_mask, dim=0)
             else:
                 qry_valid_mask = torch.zeros((bs, h, w)).long()
+            if torch.cuda.is_available():
+                qry_valid_mask.cuda()
 
             pos_embed = self.positional_encoding(qry_valid_mask)  # [bs, num_feats, h, w]
             pos_embed = pos_embed.flatten(2).transpose(1, 2)      # [bs, hw, num_feats]
