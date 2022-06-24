@@ -40,7 +40,7 @@ def main(args: argparse.Namespace) -> None:
 
     log(args)
 
-    log('+++ Check performance of Deformable Attention +++\n')
+    log('+++ Check performance of Cross Attention multi-level reduce-dimension:1024 +++\n')
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -97,7 +97,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer =======
-    Trans =  DeTr(args, sf_att=args.sf_att, cs_att=args.cs_att, reduce_dim=512).cuda()
+    Trans =  DeTr(args, sf_att=args.sf_att, cs_att=args.cs_att, reduce_dim=1024).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
