@@ -21,8 +21,8 @@ class DeTr(nn.Module):
         drop_out = 0.5
         in_fea_dim = in_fea_dim_lookup[args.rmid]
         self.adjust_feature = nn.Sequential(nn.Conv2d(in_fea_dim, reduce_dim, kernel_size=1, padding=0, bias=False),
-                                            nn.ReLU(inplace=True),
-                                            nn.Dropout2d(p=drop_out))
+                                            nn.ReLU(inplace=True),)
+                                           #  nn.Dropout2d(p=drop_out))
 
         if cs_att:
             self.cross_trans = MatchNet(temp=args.temp, cv_type='red', sce=False, sym_mode=True)
