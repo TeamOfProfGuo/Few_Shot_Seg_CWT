@@ -27,12 +27,7 @@ class DeTr(nn.Module):
         if cs_att:
             self.cross_trans = MatchNet(temp=args.temp, cv_type='red', sce=False, sym_mode=True)
         if sf_att:
-            num_levels = 1
-            embed_dims = reduce_dim
-            self.num_levels = 1
-            self.level_embed = nn.Parameter(torch.rand(num_levels, embed_dims))
-            self.positional_encoding = SinePositionalEncoding(embed_dims // 2, normalize=True)
-            self.self_trans =  MSDeformAttn(d_model=embed_dims, n_levels=1, n_heads=8, n_points=9)
+            self.self_trans =  DeformAtt(embed_dims=reduce_dim, n_levels=1, n_heads=8, n_points=9)
 
         self.print_model()
 
@@ -41,17 +36,11 @@ class DeTr(nn.Module):
 
         if self.cs_att:
             ca_fq = self.cross_trans(fq_fea, fs_fea, f_s, ig_mask=None, ret_corr=False)
-            f_q = F.normalize(f_q, p=2, dim=1) + F.normalize(ca_fq, p=2, dim=1) * 0.2
+            f_q = F.normalize(f_q, p=2, dim=1) + F.normalize(ca_fq, p=2, dim=1) * self.args.att_wt
 
         if self.sf_att:
-            if not isinstance(fq_fea, list):
-                fq_fea = [fq_fea]
-            q_flatten, qry_valid_masks_flatten, pos_embed_flatten, spatial_shapes, level_start_index = self.get_qry_flatten_input(fq_fea, qry_masks=None)
-            reference_points = self.get_reference_points(spatial_shapes, device=q_flatten.device)
-            input_flatten = f_q.flatten(2).permute(0, 2, 1)
-            sa_fq = self.self_trans(q_flatten + pos_embed_flatten, reference_points, input_flatten, spatial_shapes, level_start_index, input_padding_mask=None)
-            sa_fq = sa_fq.permute(0, 2, 1).view(f_q.shape)
-            f_q = F.normalize(f_q, p=2, dim=1) + F.normalize(sa_fq, p=2, dim=1) * 0.2
+            sa_fq = self.self_trans(fq_fea, f_q, padding_mask=padding_mask)   # [B, 512, 60, 60]
+            f_q = F.normalize(f_q, p=2, dim=1) + F.normalize(sa_fq, p=2, dim=1) * self.args.att_wt
 
         return f_q, sa_fq if self.sf_att else None, ca_fq if self.cs_att else None
 
@@ -68,6 +57,41 @@ class DeTr(nn.Module):
         fq_fea = self.adjust_feature(fq_fea)
         fs_fea = self.adjust_feature(fs_fea)
         return fq_fea, fs_fea
+
+    def print_model(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'reduce_dim={self.reduce_dim}, '
+        repr_str += f'with_self_transformer={self.sf_att})'
+        repr_str += f'with_cross_transformer={self.cs_att})'
+        print(repr_str)
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+
+class DeformAtt(nn.Module):
+    def __init__(self, embed_dims = 512, n_heads=8, n_points=9, n_levels=1):
+        super().__init__()
+
+        self.num_levels = n_levels
+        self.level_embed = nn.Parameter(torch.rand(n_levels, embed_dims))
+        self.positional_encoding = SinePositionalEncoding(embed_dims // 2, normalize=True)
+        self.self_trans =  MSDeformAttn(d_model=embed_dims, n_levels=n_levels, n_heads=n_heads, n_points=n_points)
+
+    def forward(self, fq_fea, f_q, padding_mask=None):
+        if not isinstance(fq_fea, list):
+            fq_fea = [fq_fea]
+
+        q_flatten, qry_valid_masks_flatten, pos_embed_flatten, spatial_shapes, level_start_index = self.get_qry_flatten_input(fq_fea, qry_masks=padding_mask)
+        reference_points = self.get_reference_points(spatial_shapes, device=q_flatten.device)
+        input_flatten = f_q.flatten(2).permute(0, 2, 1)
+        sa_fq = self.self_trans(q_flatten + pos_embed_flatten, reference_points, input_flatten, spatial_shapes, level_start_index, input_padding_mask=None)
+        sa_fq = sa_fq.permute(0, 2, 1).view(f_q.shape)
+        return sa_fq
 
     def get_reference_points(self, spatial_shapes, device):
         reference_points_list = []
@@ -123,19 +147,3 @@ class DeTr(nn.Module):
         level_start_index = torch.cat((spatial_shapes.new_zeros((1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))  # [num_lvl]
 
         return src_flatten, qry_valid_masks_flatten, pos_embed_flatten, spatial_shapes, level_start_index
-
-    def print_model(self):
-        repr_str = self.__class__.__name__
-        repr_str += f'reduce_dim={self.reduce_dim}, '
-        repr_str += f'with_self_transformer={self.sf_att})'
-        repr_str += f'with_cross_transformer={self.cs_att})'
-        print(repr_str)
-
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-
-

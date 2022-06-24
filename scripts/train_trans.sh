@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=tn
+#SBATCH --job-name=cs4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2

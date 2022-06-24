@@ -56,8 +56,8 @@ MODEL:
   cs_att: True
   aux: False
   temp: 20.0
-  rmid: l34       # nr, mid3, mid4
-  att_wt: 0.3
+  rmid: l4       # nr, mid3, mid4
+  att_wt: 0.2
   sce: False
 
 
@@ -80,4 +80,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: ca_l34
+  exp_name: ca_l4

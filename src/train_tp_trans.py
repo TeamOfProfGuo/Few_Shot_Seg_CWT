@@ -104,25 +104,10 @@ args.augmentations = ['hor_flip', 'resize_np']
 train_loader, train_sampler = get_train_loader(args)   # split 0: len 4760, cls[6,~20]在pascal train中对应4760个图片， 先随机选图片，再根据图片选cls
 episodic_val_loader, _ = get_val_loader(args)          # split 0: len 364， 对应cls[1,~5],在pascal val中对应364个图片
 
-# ====== Transformer ======
-args.crm_type = 'nc'
-args.rmid = 'mid4'
-args.ignore = False
-if args.crm_type == 'chm':
-    CorrNet = CHMLearner(ktype='psi', feat_dim=2048, temp=args.temp)
-    print('model setting kernel type {}, input feature dim {}'.format('psi', 2048))
-else:
-    CorrNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True)
-optimizer_meta = get_optimizer(args, [dict(params=CorrNet.parameters(), lr=args.trans_lr * args.scale_lr)])
-scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
-
-fname = './results/fuse_pascal/resnet50/split0_shot1/match_l4_nig/best1.pth'
-pre_weight = torch.load(fname, map_location=lambda storage, location: storage)['state_dict']
-CorrNet.load_state_dict(pre_weight, strict=True)
-
 # ====== Deformable Attn ======
+args.sf_att, args.cs_att = False, True
 
-Trans = DeTr(args, sf_att=True, cs_att=False, reduce_dim=512)
+Trans = DeTr(args, sf_att=args.sf_att, cs_att=args.cs_att, reduce_dim=512)
 
 # ====== Metrics initialization ======
 max_val_mIoU = 0.
