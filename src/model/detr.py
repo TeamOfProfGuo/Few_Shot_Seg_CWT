@@ -11,7 +11,7 @@ in_fea_dim_lookup = {'l3': 1024, 'l4': 2048, 'l34': 1024+2048, 'l23':512+1024}
 
 
 class DeTr(nn.Module):
-    def __init__(self, args, sf_att=False, cs_att=True, reduce_dim=512, layers=50, classes=2, shot=1,  trans_multi_lvl=1):
+    def __init__(self, args, sf_att=False, cs_att=True, reduce_dim=512,):
         super().__init__()
         self.args = args     # rmid
         self.reduce_dim = reduce_dim
@@ -32,7 +32,7 @@ class DeTr(nn.Module):
             self.num_levels = 1
             self.level_embed = nn.Parameter(torch.rand(num_levels, embed_dims))
             self.positional_encoding = SinePositionalEncoding(embed_dims // 2, normalize=True)
-            self.self_trans =  MSDeformAttn(embed_dims, n_levels=1, n_heads=8, n_points=9)
+            self.self_trans =  MSDeformAttn(d_model=embed_dims, n_levels=1, n_heads=8, n_points=9)
 
         self.print_model()
 
@@ -110,7 +110,8 @@ class DeTr(nn.Module):
 
             pos_embed = self.positional_encoding(qry_valid_mask)  # [bs, num_feats, h, w]
             pos_embed = pos_embed.flatten(2).transpose(1, 2)      # [bs, hw, num_feats]
-            pos_embed = pos_embed + self.level_embed[lvl].view(1, 1, -1)
+            if self.num_levels>1:
+                pos_embed = pos_embed + self.level_embed[lvl].view(1, 1, -1)
             pos_embed_flatten.append(pos_embed)                   # [bs, hw, num_feats]
 
             qry_valid_masks_flatten.append(qry_valid_mask.flatten(1))  # [bs, hw]

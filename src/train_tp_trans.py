@@ -32,7 +32,7 @@ LAYERS= 50
 SHOT= 1                         
 """
 
-arg_input = ' --config config_files/pascal_match.yaml   \
+arg_input = ' --config config_files/pascal_trans.yaml   \
   --opts train_split 0   layers 50    shot 1   trans_lr 0.001   cls_lr 0.1    batch_size 1  \
   batch_size_val 1   epochs 20     test_num 1000 '
 

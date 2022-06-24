@@ -6,11 +6,8 @@ import time
 import random
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
-import torch.optim as optim
 from collections import defaultdict
 from .model import *
 from .model.pspnet import get_model
@@ -34,7 +31,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'fuse_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'trans_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -43,8 +40,7 @@ def main(args: argparse.Namespace) -> None:
 
     log(args)
 
-    log('+++ Do not filter ignore pixel based on Corr0, Can we filter ignore pixel based on Corr0? +++\n'
-        '+++ args.ignore: whether to consider ignore pixel based on Corr1, only applicable in Meta-Test+++')
+    log('+++ Check performance of Deformable Attention +++\n')
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -101,12 +97,8 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer =======
-    if args.crm_type == 'chm':
-        CorrNet = CHMLearner(ktype='psi', feat_dim=1024, temp=args.temp).cuda()
-        print('model setting kernel type {}, input feature dim {}'.format('psi', 2048))
-    else:
-        CorrNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True).cuda()
-    optimizer_meta = get_optimizer(args, [dict(params=CorrNet.parameters(), lr=args.trans_lr * args.scale_lr)])
+    Trans =  DeTr(args, sf_att=args.sf_att, cs_att=args.cs_att, reduce_dim=512,)
+    optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
     # ====== Metrics initialization ======
@@ -148,33 +140,19 @@ def main(args: argparse.Namespace) -> None:
             with torch.no_grad():
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pd_q0 = model.classifier(f_q)
-                pd_s  = model.classifier(f_s)
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            # filter out ignore pixels
-            if args.rmid == 'nr':
-                idx = -1
-            elif args.rmid in ['mid2', 'mid3', 'mid4']:
-                idx = int(args.rmid[-1]) - 2
-            fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
-            fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-            B, _, h, w = fs_fea.shape
-            l_corr = get_corr(q=fq_fea, k=fs_fea).reshape(B, h, w, h, w)
+            fq, sa_fq, ca_fq = Trans(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
 
-            if args.crm_type == 'chm':
-                fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-                fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-                weighted_v = CorrNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=False, ret_corr=False)
-            else:
-                weighted_v, l_corr1 = CorrNet(corr=l_corr, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=False, ret_corr=True)  # corr1: [B, 60, 60]
-
-            pd_q1 = model.classifier(weighted_v)
+            if args.sf_att:
+                att_fq = sa_fq
+            elif args.cs_att:
+                att_fq = ca_fq
+            pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-            out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
-            pd_q = model.classifier(out)
-            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-            # combine pred0 and pred1 based on dynamic fusion
+            pd_q = model.classifier(fq)
+            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
             q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
@@ -193,7 +171,7 @@ def main(args: argparse.Namespace) -> None:
 
             # Print loss and mIoU
             IoUb, IoUf = dict(), dict()
-            for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2), (pred_q1_b, '1b')]:
+            for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2)]:
                 intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, args.num_classes_tr, 255)
                 IoUb[idx], IoUf[idx] = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
@@ -203,16 +181,16 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
             train_iou_compare.update(IoUf[1], IoUf[0])
 
-            if i%100==0 or (epoch==1 and i%10==0):
-                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} IoUf1b {:.2f} IoUb1b {:.2f} '
+            if i%100==0 or (epoch==1 and i <= 1190):
+                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} '
                     'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
-                    epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2], IoUf['1b'], IoUb['1b'],
+                    epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
                     q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
             if i%1190==0:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=CorrNet)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -220,33 +198,20 @@ def main(args: argparse.Namespace) -> None:
                     filename_transformer = os.path.join(sv_path, f'best.pth')
                     if args.save_models:
                         log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
-                        torch.save({'epoch': epoch, 'state_dict': CorrNet.state_dict(),
+                        torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
                                     'optimizer': optimizer_meta.state_dict()}, filename_transformer)
                 if val_Iou1.item() > max_val_mIoU1:
                     max_val_mIoU1 = val_Iou1.item()
                     filename_transformer = os.path.join(sv_path, f'best1.pth')
                     if args.save_models:
                         log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))
-                        torch.save({'epoch': epoch, 'state_dict': CorrNet.state_dict(),
+                        torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
                                     'optimizer': optimizer_meta.state_dict()}, filename_transformer)
 
         log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, loss0 {:.2f}, loss1 {:.2f}===========\n'.format(
             epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_loss_meter0.avg, train_loss_meter1.avg))
         train_iou_meter1.reset()
         train_loss_meter1.reset()
-
-                # For debugging
-                # if i%50 == 0:
-                #     os.makedirs(trans_save_dir, exist_ok=True)
-                #     filename_transformer = os.path.join(trans_save_dir, 'debug_iter{}.pth'.format(i))
-                #
-                #     if args.save_models:
-                #         print('Saving checkpoint to: ' + filename_transformer)
-                #         torch.save({'epoch': epoch,
-                #                     'state_dict': model.state_dict(),
-                #                     'optimizer': optimizer_meta.state_dict()},
-                #                    filename_transformer)
-                #     print('save ckpt to {}'.format(filename_transformer))
 
     if args.save_models:  # 所有跑完，存last epoch
         filename_transformer = os.path.join(sv_path, 'final.pth')
@@ -275,10 +240,6 @@ def validate_epoch(args, val_loader, model, Net):
     cls_intersection1 = defaultdict(int)  # Default value is 0
     cls_union1 = defaultdict(int)
     IoU1 = defaultdict(float)
-
-    cls_intersection1b = defaultdict(int)  # Default value is 0
-    cls_union1b = defaultdict(int)
-    IoU1b = defaultdict(float)
 
     val_iou_compare = CompareMeter()
 
@@ -314,36 +275,22 @@ def validate_epoch(args, val_loader, model, Net):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-        if args.rmid == 'nr':
-            idx = -1
-        elif args.rmid in ['mid2', 'mid3', 'mid4']:
-            idx = int(args.rmid[-1]) - 2
-        fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
-        fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-        pd_q_b, ret_corr, ig_mask = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr='cr_ig')
-        corr, weighted_v_b = ret_corr
-        pd_q1_b = model.classifier(weighted_v_b)
-        pred_q1_b = F.interpolate(pd_q1_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)  # weighted_v based on original corr
-
-        if not args.ignore:
-            ig_mask = None
-        if args.crm_type == 'chm':
-            fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-            fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-            weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
-        else:
-            weighted_v = Net(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
-        out = (weighted_v * args.att_wt + f_q) / (1 + args.att_wt)
-        pd_q1 = model.classifier(weighted_v)
-        pd_q = model.classifier(out)
+        fq, sa_fq, ca_fq = Net(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
+        if args.sf_att:
+            att_fq = sa_fq
+        elif args.cs_att:
+            att_fq = ca_fq
+        pd_q1 = model.classifier(att_fq)
         pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+
+        pd_q = model.classifier(fq)
         pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection1b, cls_union1b, IoU1b, pred_q1_b)] ):
+                 (cls_intersection, cls_union, IoU, pred_q)] ):
             intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
@@ -361,14 +308,13 @@ def validate_epoch(args, val_loader, model, Net):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            mIoU1b = np.mean([IoU1b[i] for i in IoU1b])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} mIoU1b {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                iter_num, args.test_num, mIoU0, mIoU1, mIoU, mIoU1b, loss_meter=loss_meter))
+            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} mIoU1b {:.4f} | time used {:.1f}m.'.format(
-        mIoU0, mIoU1, mIoU, mIoU1b, runtime/60))
+    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
+        mIoU0, mIoU1, mIoU, runtime/60))
     for class_ in cls_union:
         log("Class {} : {:.4f}".format(class_, IoU[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
