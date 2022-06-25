@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=aux2
+#SBATCH --job-name=aux1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
