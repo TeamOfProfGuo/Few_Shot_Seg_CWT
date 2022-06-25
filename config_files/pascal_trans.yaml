@@ -42,6 +42,7 @@ TRAIN:
 
 MODEL:
   arch: resnet
+  pretrained: False  # Means the backbone has been pre-trained
   bins: [1, 2, 3, 6]
   dropout: 0.1
   m_scale: False
