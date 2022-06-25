@@ -54,7 +54,7 @@ MODEL:
 
   sf_att: False
   cs_att: True
-  aux: 1
+  aux: 0.2
   temp: 20.0
   rmid: l4       # nr, mid3, mid4
   att_wt: 0.2
@@ -80,4 +80,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: sf_l4_aux
+  exp_name: sf_l4_aux02
