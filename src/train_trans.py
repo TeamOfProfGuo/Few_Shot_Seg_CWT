@@ -142,6 +142,7 @@ def main(args: argparse.Namespace) -> None:
                 pd_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+            Trans.train()
             fq, sa_fq, ca_fq = Trans(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
 
             if args.sf_att:
@@ -280,6 +281,7 @@ def validate_epoch(args, val_loader, model, Net):
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+        Net.eval()
         fq, sa_fq, ca_fq = Net(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
         if args.sf_att:
             att_fq = sa_fq
