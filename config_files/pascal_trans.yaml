@@ -42,7 +42,6 @@ TRAIN:
 
 MODEL:
   arch: resnet
-  pretrained: False  # Means the backbone has been pre-trained
   bins: [1, 2, 3, 6]
   dropout: 0.1
   m_scale: False
@@ -54,7 +53,7 @@ MODEL:
 
   sf_att: False
   cs_att: True
-  aux: False
+  aux: 1
   temp: 20.0
   rmid: l4       # nr, mid3, mid4
   att_wt: 0.2
@@ -80,4 +79,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: ca_l4
+  exp_name: sf_l4_aux

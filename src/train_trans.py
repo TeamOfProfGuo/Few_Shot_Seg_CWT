@@ -162,9 +162,14 @@ def main(args: argparse.Namespace) -> None:
             criterion = nn.CrossEntropyLoss(weight=loss_weight, ignore_index=255)
             q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
+            q_loss  = criterion(pred_q, q_label.long())
+
+            loss = q_loss1
+            if args.get('aux', False):
+                loss = q_loss1 + args.aux * q_loss
 
             optimizer_meta.zero_grad()
-            q_loss1.backward()
+            loss.backward()
             optimizer_meta.step()
             if args.scheduler == 'cosine':
                 scheduler.step()

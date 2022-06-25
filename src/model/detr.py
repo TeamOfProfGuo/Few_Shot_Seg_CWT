@@ -11,7 +11,7 @@ in_fea_dim_lookup = {'l3': 1024, 'l4': 2048, 'l34': 1024+2048, 'l23':512+1024}
 
 
 class DeTr(nn.Module):
-    def __init__(self, args, sf_att=False, cs_att=True, reduce_dim=512,):
+    def __init__(self, args, sf_att=False, cs_att=True, reduce_dim=512, use_drop=True):
         super().__init__()
         self.args = args     # rmid
         self.reduce_dim = reduce_dim
@@ -21,8 +21,9 @@ class DeTr(nn.Module):
         drop_out = 0.5
         in_fea_dim = in_fea_dim_lookup[args.rmid]
         self.adjust_feature = nn.Sequential(nn.Conv2d(in_fea_dim, reduce_dim, kernel_size=1, padding=0, bias=False),
-                                            nn.ReLU(inplace=True),)
-                                           #  nn.Dropout2d(p=drop_out))
+                                            nn.ReLU(inplace=True))
+        if use_drop:
+            self.adjust_feature.add_module(nn.Dropout2d(p=drop_out))
 
         if cs_att:
             self.cross_trans = MatchNet(temp=args.temp, cv_type='red', sce=False, sym_mode=True)
