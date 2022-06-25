@@ -97,7 +97,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer =======
-    Trans =  DeTr(args, sf_att=args.sf_att, cs_att=args.cs_att, reduce_dim=1024).cuda()
+    Trans =  DeTr(args, sf_att=args.sf_att, cs_att=args.cs_att, reduce_dim=args.reduce_dim).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 

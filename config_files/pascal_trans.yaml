@@ -60,6 +60,7 @@ MODEL:
   att_wt: 0.2
   sce: False
   drop: True
+  reduce_dim: 512
 
 
 Classifier:
