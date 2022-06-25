@@ -52,13 +52,14 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
-  sf_att: False
-  cs_att: True
+  sf_att: True
+  cs_att: False
   aux: 0.2
   temp: 20.0
   rmid: l4       # nr, mid3, mid4
   att_wt: 0.2
   sce: False
+  drop: True
 
 
 Classifier:

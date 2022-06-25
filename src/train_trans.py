@@ -274,7 +274,6 @@ def validate_epoch(args, val_loader, model, Net):
         model.inner_loop(f_s, s_label)
 
         # ====== Phase 2: Update query score using attention. ======
-        model.eval()
         with torch.no_grad():
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
             pd_q0 = model.classifier(f_q)
