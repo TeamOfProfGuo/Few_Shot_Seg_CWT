@@ -86,7 +86,7 @@ class MatchNet(nn.Module):
 
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
 
-    def forward(self, fq_fea, fs_fea, v, s_mask=None, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
+    def forward(self, fq_fea, fs_fea, v, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False):  # ig_mask [1, 3600]
         B, ch, h, w = fq_fea.shape
         if v.dim() == 4:
             v = v.flatten(2)
@@ -107,15 +107,20 @@ class MatchNet(nn.Module):
         if ig_mask is not None:
             ig_mask = ig_mask.view(B, -1, h*w).expand(corr2d.shape)
             corr2d[ig_mask==True] = 0.0001         # [B, N_q, N_s]
-        if self.cyc:
+        if self.cyc and use_cyc:
             inconsistent_mask = self.run_cyc(corr2d, s_mask)   # positive means inconsistent [B, N_s]
-            inconsistent_mask = inconsistent_mask.unsqueeze(1) * (-1000.0)  # [B, 1, N_s]
-            corr2d = corr2d + inconsistent_mask
+            inconsistent_mask = inconsistent_mask.unsqueeze(1)   # [B, 1, N_s]
+            corr2d = corr2d + inconsistent_mask * (-1000.0)
 
         attn = F.softmax( corr2d*self.temp, dim=-1 )
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
         weighted_v = weighted_v.view(B, -1, h, w)
-        if ret_corr:
+
+        if ret_corr and ret_cyc:
+            return weighted_v, corr2d.reshape(B, h, w, h, w), inconsistent_mask
+        elif ret_cyc:
+            return weighted_v, inconsistent_mask,
+        elif ret_corr:
             return weighted_v, corr2d.reshape(B, h, w, h, w)
         else:
             return weighted_v

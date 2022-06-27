@@ -160,7 +160,8 @@ def main(args: argparse.Namespace) -> None:
                 fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
                 weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), ig_mask=None, ret_corr=False)
             else:
-                weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), s_mask=pd_s.argmax(1), ig_mask=None)
+                use_cyc = (i >= 1000) and args.cyc
+                weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] +(-1,)), s_mask=pd_s.argmax(1), use_cyc=use_cyc, ig_mask=None)
             pd_q1 = model.classifier(weighted_v)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -314,7 +315,7 @@ def validate_epoch(args, val_loader, model, Net):
                 fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
                 weighted_v = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=None, ret_corr=False)
             else:
-                weighted_v, corr1 = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), s_mask=pd_s.argmax(1), ig_mask=None, ret_corr=True)
+                weighted_v, corr1 = Net(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), s_mask=pd_s.argmax(1), use_cyc=args.cyc, ig_mask=None, ret_corr=True)
 
             if args.ignore:
                 ig_mask = get_ig_mask(sim=corr1, s_label=s_label, q_label=q_label, pd_q0=pd_q0, pd_s=pd_s)   # s_label & q_label 为原图大小
