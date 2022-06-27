@@ -130,11 +130,15 @@ def validate_transformer(args: argparse.Namespace,
         iter_num, runtime = 0, 0
         cls_intersection = defaultdict(int)  # Default value is 0
         cls_union = defaultdict(int)
+        cls_intersection0 = defaultdict(int)  # Default value is 0
+        cls_union0 = defaultdict(int)
         IoU = defaultdict(int)
+        IoU0 = defaultdict(int)
 
         for e in range(nb_episodes):
             t0 = time.time()
             logits_q = torch.zeros(args.batch_size_val, 1, 2, h, w)
+            logits_q0 = torch.zeros(args.batch_size_val, 1, 2, h, w)
             gt_q = 255 * torch.ones(args.batch_size_val, 1, args.image_size,args.image_size).long()
             classes = []  # All classes considered in the tasks
 
@@ -185,8 +189,10 @@ def validate_transformer(args: argparse.Namespace,
                 # ====== Phase 2: Update classifier's weights with old weights and query features. ======
                 with torch.no_grad():
                     f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
-                    f_q = F.normalize(f_q, dim=1)
+                    pred_q0 = binary_classifier(f_q)
+                    pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+                    f_q = F.normalize(f_q, dim=1)
                     weights_cls = binary_classifier.weight.data  # [2, c, 1, 1]
                     weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(f_q.shape[0], 2, 512)  # [1, 2, c]
                     updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [1, 2, c]
@@ -199,6 +205,7 @@ def validate_transformer(args: argparse.Namespace,
                     pred_q = Pseudo_cls(f_q)   # [1, 2, 60, 60] 没有expand到2个
 
                 logits_q[i] = pred_q.detach()  # [1 batch_size, 2 channel, 60, 60] 其实一个batch只有一个obs, i=0
+                logits_q0[i] =pred_q0.detach()
                 gt_q[i, 0] = q_label           # [1 batch_size, 1 channel, 473, 473]
                 classes.append([class_.item() for class_ in subcls])
 
@@ -206,25 +213,32 @@ def validate_transformer(args: argparse.Namespace,
             runtime += t1 - t0
 
             logits = F.interpolate(logits_q.squeeze(1), size=(H, W),mode='bilinear', align_corners=True).detach()
+            logits0 = F.interpolate(logits_q0.squeeze(1), size=(H, W),mode='bilinear', align_corners=True).detach()
             intersection, union, _ = batch_intersectionAndUnionGPU(logits.unsqueeze(1), gt_q, 2)
             intersection, union = intersection.cpu(), union.cpu()
+            intersection0, union0, _ = batch_intersectionAndUnionGPU(logits0.unsqueeze(1), gt_q, 2)
+            intersection0, union0 = intersection0.cpu(), union0.cpu()
 
             # ====== Log metrics ======
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             loss = criterion_standard(logits, gt_q.squeeze(1))
             loss_meter.update(loss.item())
-            for i, task_classes in enumerate(classes):
+            for i, task_classes in enumerate(classes):  # classes list of list/ each sublist corresponds to nb_episodes
                 for j, class_ in enumerate(task_classes):
                     cls_intersection[class_] += intersection[i, 0, j + 1]  # Do not count background
                     cls_union[class_] += union[i, 0, j + 1]
+                    cls_intersection0[class_] += intersection0[i, 0, j + 1]  # Do not count background
+                    cls_union0[class_] += union0[i, 0, j + 1]
 
             for class_ in cls_union:
                 IoU[class_] = cls_intersection[class_] / (cls_union[class_] + 1e-10)   # cls wise IoU
+                IoU0[class_] = cls_intersection0[class_] / (cls_union0[class_] + 1e-10)  # cls wise IoU
 
             if (iter_num % 200 == 0):
                 mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
-                print('Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                    iter_num, args.test_num, mIoU, loss_meter=loss_meter))
+                mIoU0 = np.mean(IoU0[i] for i in IoU0)
+                print('Test: [{}/{}] mIoU {:.4f} mIoU0 {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                    iter_num, args.test_num, mIoU, mIoU0, loss_meter=loss_meter))
 
         runtimes[run] = runtime
         mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}

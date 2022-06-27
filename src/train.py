@@ -97,8 +97,7 @@ def main(args: argparse.Namespace) -> None:
 
     transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5).cuda()
 
-    optimizer_transformer = get_optimizer(args,
-                                          [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
+    optimizer_transformer = get_optimizer(args, [dict(params=transformer.parameters(), lr=args.trans_lr * args.scale_lr)])
 
     trans_save_dir = get_model_dir_trans(args)
 
@@ -180,6 +179,7 @@ def do_epoch(
     loss_meter = AverageMeter()
     train_losses = torch.zeros(log_iter)
     train_Ious = torch.zeros(log_iter)
+    train_Ious0 = torch.zeros(log_iter)
 
     iterable_train_loader = iter(train_loader)
 
@@ -247,41 +247,41 @@ def do_epoch(
         model.eval()
         with torch.no_grad():
             f_q, _ = model.extract_features(qry_img)  # [1, c, h, w]
+            pred_q0 = binary_cls(f_q)
+            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
             f_q = F.normalize(f_q, dim=1)          # [1, c, 60, 60]
 
         # Weights of the classifier.
         weights_cls = binary_cls.weight.data       # [2, 512, 1, 1]
-
-        weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(
-            args.batch_size, 2, weights_cls.shape[1]
-        )  # [B, 2, c]
+        weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(args.batch_size, 2, weights_cls.shape[1])  # [B, 2, c]
 
         # Update the classifier's weights with transformer
         updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [n_task, 2, c] [1, 2, 512]
 
         f_q_reshape = f_q.view(args.batch_size, args.bottleneck_dim, -1)  # [n_task, c, hw]
 
-        pred_q = torch.matmul(updated_weights_cls, f_q_reshape).view(
-            args.batch_size, 2, f_q.shape[-2], f_q.shape[-1])             # [n_task, 2, h, w]
-
+        pred_q = torch.matmul(updated_weights_cls, f_q_reshape).view(args.batch_size, 2, f_q.shape[-2], f_q.shape[-1])             # [n_task, 2, h, w]
         pred_q = F.interpolate(pred_q, size=q_label.shape[1:],mode='bilinear', align_corners=True)
 
         loss_q = criterion(pred_q, q_label.long())
-
         optimizer_trans.zero_grad()
         loss_q.backward()
         optimizer_trans.step()
 
         # Print loss and mIoU
         intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
-
         mIoU = (intersection / (union + 1e-10)).mean()
         loss_meter.update(loss_q.item() / args.batch_size)
 
         train_losses[i] = loss_meter.avg
         train_Ious[i] = mIoU
 
-    print('Epoch {}: The mIoU {:.2f}, loss {:.2f}'.format(epoch + 1, train_Ious.mean(), train_losses.mean()))
+        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
+        mIoU = (intersection / (union + 1e-10)).mean()
+        train_Ious0[i] = mIoU
+
+    print('Epoch {}: The mIoU {:.2f}, loss {:.2f}, mIoU0 {:.2f}'.format(
+        epoch + 1, train_Ious.mean(), train_losses.mean(), train_Ious0.mean() ))
 
     return train_Ious, train_losses
 
