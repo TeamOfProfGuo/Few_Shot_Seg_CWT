@@ -73,17 +73,21 @@ class NeighConsensus(torch.nn.Module):
 
 
 class MatchNet(nn.Module):
-    def __init__(self, temp=3.0, cv_type='red', sce=False, sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
+    def __init__(self, temp=3.0, cv_type='red', sce=False, cyc=False, sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
         super().__init__()
         self.temp = temp
         self.sce = sce
-        sce_ksz = 25
+        self.cyc = cyc
         if self.sce:
+            sce_ksz = 25
             self.SpatialContextEncoder = SpatialContextEncoder(kernel_size=sce_ksz, input_dim=sce_ksz * sce_ksz + 2048, hidden_dim=2048)
+        if self.cyc:
+            attn_drop = 0.0
+            self.attn_drop = nn.Dropout(attn_drop)
 
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
 
-    def forward(self, fq_fea, fs_fea, v, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
+    def forward(self, fq_fea, fs_fea, v, s_mask=None, ig_mask=None, ret_corr=False):  # ig_mask [1, 3600]
         B, ch, h, w = fq_fea.shape
         if v.dim() == 4:
             v = v.flatten(2)
@@ -98,12 +102,16 @@ class MatchNet(nn.Module):
         corr = get_corr(fq_fea, fs_fea)
         corr = corr.view(B, -1, h, w, h, w)  # [B, 1, h, w, h_s, w_s]
 
-        corr4d = self.run_match_model(corr).squeeze(1)
+        corr4d = self.run_match_model(corr).squeeze(1)  # [B, h, w, h_s, w_s]
         corr2d = corr4d.view(B, h*w, h*w)
 
         if ig_mask is not None:
             ig_mask = ig_mask.view(B, -1, h*w).expand(corr2d.shape)
             corr2d[ig_mask==True] = 0.0001         # [B, N_q, N_s]
+        if self.cyc:
+            inconsistent_mask = self.run_cyc(corr2d, s_mask)   # positive means inconsistent [B, N_s]
+            inconsistent_mask = inconsistent_mask.unsqueeze(1) * (-1000.0)  # [B, 1, N_s]
+            corr2d = corr2d + inconsistent_mask
 
         attn = F.softmax( corr2d*self.temp, dim=-1 )
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
@@ -118,6 +126,27 @@ class MatchNet(nn.Module):
         corr4d = self.NeighConsensus(corr4d)
         corr4d = MutualMatching(corr4d)
         return corr4d
+
+    def run_cyc(self, corr2d, s_mask):
+
+        if s_mask is not None:  # [B, 1, 60, 60]
+
+            B, n_q, n_s = corr2d.shape
+            s_mask = s_mask.view(B, n_s)
+
+            k2q_sim_idx = corr2d.max(1)[1]  # [B, n_s]
+            q2k_sim_idx = corr2d.max(2)[1]  # [B, n_q]
+
+            re_map_idx = torch.gather(q2k_sim_idx, 1, k2q_sim_idx)  # [B, n_s]  k->q->k
+            re_map_mask = torch.gather(s_mask, 1, re_map_idx)       # [B, n_s]
+
+            association = (s_mask == re_map_mask).to(corr2d.device)   # [B, n_s], True means matched position in supp
+
+            inconsistent = ~association            # True means unmatched
+            inconsistent = inconsistent.float()
+            inconsistent = self.ass_drop(inconsistent)
+            return inconsistent
+
 
 #############
 

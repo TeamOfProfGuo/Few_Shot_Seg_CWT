@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=aux
+#SBATCH --job-name=cyc
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
