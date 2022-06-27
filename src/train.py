@@ -66,8 +66,7 @@ def main(args: argparse.Namespace) -> None:
                     if pre_dict[key1].shape == pre_weight[key2].shape:
                         pre_dict[key1] = pre_weight[key2]
                     else:
-                        print('Pre-trained {} shape and model {} shape: {}, {}'.
-                              format(key2, key1, pre_weight[key2].shape, pre_dict[key1].shape))
+                        # print('Pre-trained {} shape and model {} shape: {}, {}'. format(key2, key1, pre_weight[key2].shape, pre_dict[key1].shape))
                         continue
 
             model.load_state_dict(pre_dict, strict=True)
