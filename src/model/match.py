@@ -82,8 +82,7 @@ class MatchNet(nn.Module):
             sce_ksz = 25
             self.SpatialContextEncoder = SpatialContextEncoder(kernel_size=sce_ksz, input_dim=sce_ksz * sce_ksz + 2048, hidden_dim=2048)
         if self.cyc:
-            attn_drop = 0.0
-            self.attn_drop = nn.Dropout(attn_drop)
+            self.ass_drop  = nn.Dropout(0.1)
 
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
 
