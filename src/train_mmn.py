@@ -12,7 +12,7 @@ import torch.backends.cudnn as cudnn
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
-from .model import MMN
+from .model import MMN, SegLoss
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
@@ -154,11 +154,7 @@ def main(args: argparse.Namespace) -> None:
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
-            q_back_pix = np.where(q_label_arr == 0)
-            q_target_pix = np.where(q_label_arr == 1)
-            loss_weight = torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]).cuda()
-            criterion = nn.CrossEntropyLoss(weight=loss_weight, ignore_index=255)
+            criterion = SegLoss(loss_type=args.loss_type)
             q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
             q_loss  = criterion(pred_q, q_label.long())

@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .match import MatchNet
 from .msm import MSBlock, WeightAverage
+from .model_util import SegLoss
 
 
 class MMN(nn.Module):
@@ -47,64 +48,3 @@ class MMN(nn.Module):
         fq = F.normalize(f_q, p=2, dim=1) + F.normalize(att_fq4, p=2, dim=1) * self.args.att_wt
 
         return fq, att_fq4
-
-    @staticmethod
-    def compute_loss(pred, label, loss_type='ce'):   # loss_type: ['ce', 'wt_ce',
-        count = torch.bincount(label.view(-1))
-        weight = torch.tensor([1.0, count[0]/count[1]])
-        if torch.cuda.is_available():
-            weight = weight.cuda()
-        criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255)
-        return criterion(pred, label)
-
-
-class SegLoss(nn.Module):
-    def __init__(self, weighted_val: float = 1.0,  reduction: str = "sum",):
-        super().__init__()
-        self.weighted_val = weighted_val
-        self.reduction = reduction
-
-    def forward(self, prediction, target_seg,):
-        return weighted_dice_loss(prediction, target_seg, self.weighted_val, self.reduction,)
-
-
-def weighted_dice_loss(
-        prediction,
-        target_seg,
-        weighted_val: float = 1.0,
-        reduction: str = "sum",
-        eps: float = 1e-8,
-):
-    """
-    Weighted version of Dice Loss
-
-    Args:
-        prediction: prediction
-        target_seg: segmentation target
-        weighted_val: values of k positives,
-        reduction: 'none' | 'mean' | 'sum'
-        eps: the minimum eps,
-    """
-    target_seg_fg = target_seg == 1
-    target_seg_bg = target_seg == 0
-    target_seg = torch.stack([target_seg_bg, target_seg_fg], dim=1).float()
-
-    n, _, h, w = target_seg.shape
-
-    prediction = prediction.reshape(-1, h, w)  # [B*2, h, w]
-    target_seg = target_seg.reshape(-1, h, w)  # [B*2, h, w]
-    prediction = torch.sigmoid(prediction)
-    prediction = prediction.reshape(-1, h * w)  # [B*2, h*w]
-    target_seg = target_seg.reshape(-1, h * w)  # [B*2, h*w]
-
-    # calculate dice loss
-    loss_part = (prediction ** 2).sum(dim=-1) + (target_seg ** 2).sum(dim=-1)
-    loss = 1 - 2 * (target_seg * prediction).sum(dim=-1) / torch.clamp(loss_part, min=eps)  # [B*2]
-    # normalize the loss
-    loss = loss * weighted_val
-
-    if reduction == "sum":
-        loss = loss.sum() / n
-    elif reduction == "mean":
-        loss = loss.mean()
-    return loss

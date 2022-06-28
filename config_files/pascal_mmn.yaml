@@ -57,7 +57,8 @@ MODEL:
   rmid: l4      # nr, l2, l4
   att_wt: 0.2
   sem: False
-  wa: True
+  wa: False
+  loss_type: wt_dc   # 'wt_dc',  'wt_ce'
 
 Classifier:
   dist: cosN
@@ -78,4 +79,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: l4_wa
+  exp_name: l4_dice

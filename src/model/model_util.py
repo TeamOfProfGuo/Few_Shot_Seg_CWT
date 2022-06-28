@@ -5,6 +5,64 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 
+class SegLoss(nn.Module):
+    def __init__(self, loss_type='wt_ce'):   # loss_type ['wt_ce', 'wt_dc']
+        super().__init__()
+        self.loss_type = loss_type
+
+    def forward(self, prediction, target_seg,):
+        if self.loss_type == 'wt_dc':
+            return weighted_dice_loss(prediction, target_seg, reduction='sum')
+        else:
+            return weighted_ce_loss(prediction, target_seg)
+
+
+def weighted_ce_loss(pred, label):
+    count = torch.bincount(label.view(-1))
+    weight = torch.tensor([1.0, count[0]/count[1]])
+    if torch.cuda.is_available():
+        weight = weight.cuda()
+    criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255)
+    return criterion(pred, label)
+
+
+def weighted_dice_loss(prediction, target_seg, weighted_val: float = 1.0, reduction: str = "sum", eps: float = 1e-8,):
+    """
+    Weighted version of Dice Loss
+    Args:
+        prediction: prediction
+        target_seg: segmentation target
+        weighted_val: values of k positives,
+        reduction: 'none' | 'mean' | 'sum'
+        eps: the minimum eps,
+    """
+    target_seg_fg = target_seg == 1
+    target_seg_bg = target_seg == 0
+    target_seg = torch.stack([target_seg_bg, target_seg_fg], dim=1).float()   # get rid of ignore pixels 255
+
+    n, _, h, w = target_seg.shape
+
+    prediction = prediction.reshape(-1, h, w)  # [B*2, h, w]
+    target_seg = target_seg.reshape(-1, h, w)  # [B*2, h, w]
+    prediction = torch.sigmoid(prediction)
+    prediction = prediction.reshape(-1, h * w)  # [B*2, h*w]
+    target_seg = target_seg.reshape(-1, h * w)  # [B*2, h*w]
+
+    # calculate dice loss
+    loss_part = (prediction ** 2).sum(dim=-1) + (target_seg ** 2).sum(dim=-1)    # [B*2]
+    loss = 1 - 2 * (target_seg * prediction).sum(dim=-1) / torch.clamp(loss_part, min=eps)  # [B*2]
+    # normalize the loss
+    loss = loss * weighted_val
+
+    if reduction == "sum":
+        loss = loss.sum() / n
+    elif reduction == "mean":
+        loss = loss.mean()
+    return loss
+
+
+
+
 def get_corr(q, k):
     bs, ch, height, width = q.shape
     proj_q = q.view(bs, ch, height * width).permute(0, 2, 1)  # [1, ch, hw] -> [1, hw, ch]
