@@ -26,7 +26,7 @@ class MMN(nn.Module):
             if self.wa:
                 setattr(self, "wa_"+str(b), WeightAverage(inner_channel))
 
-        self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cys=False, sym_mode=True)
+        self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True)
 
     def forward(self, fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None):
         fq1, fq2, fq3, fq4 = fq_lst
