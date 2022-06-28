@@ -36,9 +36,9 @@ def weighted_dice_loss(prediction, target_seg, weighted_val: float = 1.0, reduct
         reduction: 'none' | 'mean' | 'sum'
         eps: the minimum eps,
     """
-    target_seg_fg = target_seg == 1
-    target_seg_bg = target_seg == 0
-    target_seg = torch.stack([target_seg_bg, target_seg_fg], dim=1).float()   # get rid of ignore pixels 255
+    target_seg_fg = target_seg == 1  # [B, h, w]
+    target_seg_bg = target_seg == 0  # [B, h, w]
+    target_seg = torch.stack([target_seg_bg, target_seg_fg], dim=1).float()  # [B, 2, h, w] get rid of ignore pixels 255
 
     n, _, h, w = target_seg.shape
 

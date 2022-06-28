@@ -19,11 +19,24 @@ conv4_dt = {'cv4': Conv4d, 'red': CenterPivotConv4d}
 # CenterPivotConv4d: (in_channels, out_channels, kernel_size, stride=(1,)*4, padding=(1,)*4, bias=True))
 
 def MutualMatching(corr4d):
-    # mutual matching
     batch_size, ch, fs1, fs2, fs3, fs4 = corr4d.size()
 
-    corr4d_B = corr4d.view(batch_size, fs1 * fs2, fs3, fs4)  # [batch_idx,k_A,i_B,j_B]
-    corr4d_A = corr4d.view(batch_size, fs1, fs2, fs3 * fs4)
+    corr4d_lst = []
+    for chn in range(ch):
+        corr4d_chn = corr4d[:, chn, :, :, :, :]   # [B, h, w, h_s, w_s]
+        corr4d_chn = MutualMatching_chn(corr4d_chn).unsqueeze(1)
+        corr4d_lst.append(corr4d_chn)
+
+    out = torch.cat(corr4d_lst, dim=1)
+    return out
+
+
+def MutualMatching_chn(corr4d):
+    # mutual matching
+    batch_size, fs1, fs2, fs3, fs4 = corr4d.size()
+
+    corr4d_B = corr4d.view(batch_size, fs1*fs2, fs3, fs4)  # [batch_idx,k_A,i_B,j_B]
+    corr4d_A = corr4d.view(batch_size, fs1, fs2, fs3*fs4)
 
     # get max
     corr4d_B_max, _ = torch.max(corr4d_B, dim=1, keepdim=True)
@@ -33,15 +46,15 @@ def MutualMatching(corr4d):
     corr4d_B = corr4d_B / (corr4d_B_max + eps)
     corr4d_A = corr4d_A / (corr4d_A_max + eps)
 
-    corr4d_B = corr4d_B.view(batch_size, 1, fs1, fs2, fs3, fs4)
-    corr4d_A = corr4d_A.view(batch_size, 1, fs1, fs2, fs3, fs4)
+    corr4d_B = corr4d_B.view(batch_size, fs1, fs2, fs3, fs4)
+    corr4d_A = corr4d_A.view(batch_size, fs1, fs2, fs3, fs4)
 
     corr4d = corr4d * (corr4d_A * corr4d_B)  # parenthesis are important for symmetric output
     return corr4d
 
 
 class NeighConsensus(torch.nn.Module):
-    def __init__(self, kernel_sizes=[3,3,3], channels=[10,10,1], symmetric_mode=True, conv='cv4'):
+    def __init__(self, kernel_sizes=[3,3,3], channels=[10,10,1], symmetric_mode=True, conv='cv4', in_channel=1):
         super(NeighConsensus, self).__init__()
         self.symmetric_mode = symmetric_mode
         self.kernel_sizes = kernel_sizes
@@ -50,7 +63,7 @@ class NeighConsensus(torch.nn.Module):
         nn_modules = list()
         for i in range(num_layers):
             if i==0:
-                ch_in = 1
+                ch_in = in_channel
             else:
                 ch_in = channels[i-1]
             ch_out = channels[i]
@@ -73,18 +86,19 @@ class NeighConsensus(torch.nn.Module):
 
 
 class MatchNet(nn.Module):
-    def __init__(self, temp=3.0, cv_type='red', sce=False, cyc=False, sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
+    def __init__(self, temp=3.0, cv_type='red', in_channel=1, sce=False, cyc=False, sym_mode=True, cv_kernels=[3,3,3], cv_channels=[10,10,1]):
         super().__init__()
         self.temp = temp
         self.sce = sce
         self.cyc = cyc
+        self.in_channel = in_channel
         if self.sce:
             sce_ksz = 25
             self.SpatialContextEncoder = SpatialContextEncoder(kernel_size=sce_ksz, input_dim=sce_ksz * sce_ksz + 2048, hidden_dim=2048)
         if self.cyc:
             self.ass_drop  = nn.Dropout(0.1)
 
-        self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type)
+        self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type, in_channel=in_channel)
 
     def forward(self, fq_fea, fs_fea, v, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False):  # ig_mask [1, 3600]
         B, ch, h, w = fq_fea.shape
@@ -124,6 +138,21 @@ class MatchNet(nn.Module):
             return weighted_v, corr2d.reshape(B, h, w, h, w)
         else:
             return weighted_v
+
+    def corr_forward(self, corr4d, v):  # ig_mask [1, 3600]
+        if v.dim() == 4:
+            v = v.flatten(2)
+        B, ch, h, w, h, w = corr4d.shape
+        assert ch == self.in_channel, 'input corr channel inconsistent with in_channel of NCNet'
+
+        corr4d = self.run_match_model(corr4d).squeeze(1)  # [B, h, w, h_s, w_s]
+        corr2d = corr4d.view(B, h*w, h*w)
+
+        attn = F.softmax( corr2d*self.temp, dim=-1 )
+        weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
+        weighted_v = weighted_v.view(B, -1, h, w)
+
+        return weighted_v
 
     def run_match_model(self,corr4d):
         corr4d = MutualMatching(corr4d)

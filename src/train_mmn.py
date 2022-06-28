@@ -100,7 +100,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
-    Trans = MMN(args, inner_channel=32, sem=args.sem, wa=args.wa).cuda()
+    Trans = MMN(args, agg=args.agg, inner_channel=32, sem=args.sem, wa=args.wa).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
@@ -146,7 +146,7 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             Trans.train()
-            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
+            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -275,7 +275,7 @@ def validate_epoch(args, val_loader, model, Net):
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
-        fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
+        fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
         pd_q1 = model.classifier(att_fq)
         pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
