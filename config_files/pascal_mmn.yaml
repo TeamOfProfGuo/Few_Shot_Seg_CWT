@@ -61,7 +61,7 @@ MODEL:
   wa: False
 
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
-  agg: sum
+  agg: cat
 
 Classifier:
   dist: cosN
@@ -82,4 +82,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: l34_dice_sum
+  exp_name: l34_dice_cat
