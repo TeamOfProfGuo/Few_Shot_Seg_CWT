@@ -1,2 +1,2 @@
 
-from .msm_func import MSBlock
+from .msm_func import MSBlock, WeightAverage

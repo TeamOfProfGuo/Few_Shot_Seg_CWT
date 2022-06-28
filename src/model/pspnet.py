@@ -156,8 +156,8 @@ class PSPNet(nn.Module):
 
     def extract_features(self, x):
         x = self.layer0(x)
-        x = self.layer1(x)
-        x_2 = self.layer2(x)
+        x_1 = self.layer1(x)
+        x_2 = self.layer2(x_1)
         x_3 = self.layer3(x_2)
         if self.rmid == 'nr':
             x_4, x4_nr = self.layer4(x_3)
@@ -172,7 +172,7 @@ class PSPNet(nn.Module):
         x = self.bottleneck(x)
 
         if self.rmid is not None and ('l' in self.rmid or 'mid' in self.rmid):
-            return x, [x_2, x_3, x_4]
+            return x, [x_1, x_2, x_3, x_4]
         elif self.rmid == 'nr':
             return x, [x4_nr]
         else:

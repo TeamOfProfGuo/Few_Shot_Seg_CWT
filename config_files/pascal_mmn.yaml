@@ -54,11 +54,10 @@ MODEL:
 
   aux: False     #  False or input weight of aux loss
   temp: 20.0
-  rmid: l34      # nr, l2, l4
+  rmid: l4      # nr, l2, l4
   att_wt: 0.2
-  drop: False     # drop_out in adjust_feature
-  reduce_dim: 1024
-
+  sem: True
+  wa: False
 
 Classifier:
   dist: cosN
@@ -79,4 +78,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: ca_l34
+  exp_name: l4_sem
