@@ -190,7 +190,6 @@ def validate_transformer(args: argparse.Namespace,
                 with torch.no_grad():
                     f_q, _ = model.extract_features(qry_img)  # [n_task, c, h, w]
                     pred_q0 = binary_classifier(f_q)
-                    pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
                     f_q = F.normalize(f_q, dim=1)
                     weights_cls = binary_classifier.weight.data  # [2, c, 1, 1]
