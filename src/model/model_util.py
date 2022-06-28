@@ -2,6 +2,8 @@
 
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
+
 
 def get_corr(q, k):
     bs, ch, height, width = q.shape
