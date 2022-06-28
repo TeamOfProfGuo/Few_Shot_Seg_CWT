@@ -33,8 +33,8 @@ class MMN(nn.Module):
         fs1, fs2, fs3, fs4 = fs_lst
 
         if self.sem:
-            fq4 = self.msblock_4(fq4)   # [B, 32, 60, 60]
-            fs4 = self.msblock_4(fs4)
+            fq4 = self.msblock4(fq4)   # [B, 32, 60, 60]
+            fs4 = self.msblock4(fs4)
         if self.wa:
             fq4 = self.wa_4(fq4)
             fs4 = self.wa_4(fs4)
