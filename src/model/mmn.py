@@ -21,10 +21,13 @@ class MMN(nn.Module):
         self.bids = [int(num) for num in list(args.rmid[1:])]
 
         for i, b in enumerate(self.bids):
+            c_in = self.feature_channels[b-1]
             if self.sem:
-                setattr(self, "msblock"+str(b), MSBlock(self.feature_channels[b-1], rate=4, c_out=32))
+                setattr(self, "msblock"+str(b), MSBlock(c_in, rate=4, c_out=inner_channel))
+                c_in = inner_channel
+
             if self.wa:
-                setattr(self, "wa_"+str(b), WeightAverage(inner_channel))
+                setattr(self, "wa_"+str(b), WeightAverage(c_in))
 
         self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True)
 

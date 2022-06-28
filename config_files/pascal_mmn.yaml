@@ -56,7 +56,7 @@ MODEL:
   temp: 20.0
   rmid: l4      # nr, l2, l4
   att_wt: 0.2
-  sem: True
+  sem: False
   wa: True
 
 Classifier:
@@ -78,4 +78,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: l4_sem_wa
+  exp_name: l4_wa
