@@ -11,18 +11,21 @@ class SegLoss(nn.Module):
         self.loss_type = loss_type
 
     def forward(self, prediction, target_seg,):
-        if self.loss_type == 'wt_dc':
+        if self.loss_type=='wt_dc' or self.loss_type=='dc':
             return weighted_dice_loss(prediction, target_seg, reduction='sum')
+        elif self.loss_type == 'ce':
+            criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
+            return criterion_standard(prediction, target_seg)
         else:
-            return weighted_ce_loss(prediction, target_seg)
+            return weighted_ce_loss(prediction, target_seg, ignore_index=255)
 
 
-def weighted_ce_loss(pred, label):
+def weighted_ce_loss(pred, label, ignore_index=255):
     count = torch.bincount(label.view(-1))
     weight = torch.tensor([1.0, count[0]/count[1]])
     if torch.cuda.is_available():
         weight = weight.cuda()
-    criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255)
+    criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index)
     return criterion(pred, label)
 
 
@@ -59,8 +62,6 @@ def weighted_dice_loss(prediction, target_seg, weighted_val: float = 1.0, reduct
     elif reduction == "mean":
         loss = loss.mean()
     return loss
-
-
 
 
 def get_corr(q, k):
