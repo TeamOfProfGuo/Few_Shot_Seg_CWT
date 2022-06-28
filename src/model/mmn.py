@@ -39,7 +39,7 @@ class MMN(nn.Module):
             fq4 = self.wa_4(fq4)
             fs4 = self.wa_4(fs4)
 
-        att_fq4 = MatchNet(fq4, fs4, f_s, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False)
+        att_fq4 = self.corr_net(fq4, fs4, f_s, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False)
 
         fq = F.normalize(f_q, p=2, dim=1) + F.normalize(att_fq4, p=2, dim=1) * self.args.att_wt
 
