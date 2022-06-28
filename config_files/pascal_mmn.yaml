@@ -56,8 +56,8 @@ MODEL:
   temp: 20.0
   rmid: l4      # nr, l2, l4
   att_wt: 0.2
-  sem: False
-  wa: False
+  sem: True
+  wa: True
 
 Classifier:
   dist: cosN
@@ -78,4 +78,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: l4
+  exp_name: l4_sem_wa
