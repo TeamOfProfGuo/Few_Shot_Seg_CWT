@@ -244,8 +244,6 @@ def do_epoch(
             weight=torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]).cuda(),
             ignore_index=255)
 
-        pdb.set_trace()
-
         model.eval()
         with torch.no_grad():
             f_q, _ = model.extract_features(qry_img)  # [1, c, h, w]
@@ -272,16 +270,21 @@ def do_epoch(
 
         # Print loss and mIoU
         intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
-        mIoU = (intersection / (union + 1e-10)).mean()
+        IoUb, IoUf = intersection / (union + 1e-10)
         loss_meter.update(loss_q.item() / args.batch_size)
 
         train_losses[i] = loss_meter.avg
-        train_Ious[i] = mIoU
+        train_Ious[i] = (IoUb + IoUf)/2
 
         intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
-        mIoU = (intersection / (union + 1e-10)).mean()
-        train_Ious0[i] = mIoU
+        IoUb0, IoUf0 = intersection / (union + 1e-10)
+        train_Ious0[i] = (IoUb0 + IoUf0)/2
 
+        if epoch == 0:
+            print('iter {} IoUf {:.2f}, IoUb {:.2f}, IoUf0 {:.2f}, IoUb0 {:.2f}'.format(
+                i, IoUf, IoUb, IoUf0, IoUb0
+            ))
+        print('---- ', torch.bincount( pred_q0.argmax(1).view(-1) ))
     print('Epoch {}: The mIoU {:.2f}, loss {:.2f}, mIoU0 {:.2f}'.format(
         epoch + 1, train_Ious.mean(), train_losses.mean(), train_Ious0.mean() ))
 
