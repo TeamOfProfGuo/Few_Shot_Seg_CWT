@@ -275,12 +275,13 @@ def validate_epoch(args, val_loader, model, Net):
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
-        fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
-        pd_q1 = model.classifier(att_fq)
-        pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+        with torch.no_grad():
+            fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
+            pd_q1 = model.classifier(att_fq)
+            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-        pd_q = model.classifier(fq)
-        pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pd_q = model.classifier(fq)
+            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
