@@ -55,7 +55,7 @@ MODEL:
   aux: False     #  False or input weight of aux loss
   temp: 20.0
   att_wt: 0.2
-  rmid: l34      # nr, l2, l4
+  rmid: l234      # nr, l2, l4
 
   sem: False
   wa: False
@@ -82,4 +82,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: l34_dice_cat
+  exp_name: l234_dice_cat
