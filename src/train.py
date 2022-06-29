@@ -60,18 +60,16 @@ def main(args: argparse.Namespace) -> None:
         if os.path.isfile(fname):
             print("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
-
             pre_dict = model.state_dict()
-            for index, (key1, key2) in enumerate(zip(pre_dict.keys(), pre_weight.keys())):
-                if 'classifier' not in key1 and index < len(pre_dict.keys()):
-                    if pre_dict[key1].shape == pre_weight[key2].shape:
-                        pre_dict[key1] = pre_weight[key2]
+
+            for index, key in enumerate(pre_dict.keys()):
+                if 'classifier' not in key and 'gamma' not in key:
+                    if pre_dict[key].shape == pre_weight['module.' + key].shape:
+                        pre_dict[key] = pre_weight['module.' + key]
                     else:
-                        # print('Pre-trained {} shape and model {} shape: {}, {}'. format(key2, key1, pre_weight[key2].shape, pre_dict[key1].shape))
-                        continue
+                        print('Mismatched shape {}: {}, {}'.format( key, pre_weight['module.' + key].shape, pre_dict[key].shape))
 
             model.load_state_dict(pre_dict, strict=True)
-
             print("=> loaded weight '{}'".format(fname))
         else:
             print("=> no weight found at '{}'".format(fname))
@@ -281,10 +279,9 @@ def do_epoch(
         train_Ious0[i] = (IoUb0 + IoUf0)/2
 
         if epoch == 0:
-            print('iter {} IoUf {:.2f}, IoUb {:.2f}, IoUf0 {:.2f}, IoUb0 {:.2f}'.format(
-                i, IoUf, IoUb, IoUf0, IoUb0
+            print('iter {} IoUf {:.2f}, IoUb {:.2f}, IoUf0 {:.2f}, IoUb0 {:.2f}, pred_q0 {}'.format(
+                i, IoUf, IoUb, IoUf0, IoUb0, torch.bincount(pred_q0.argmax(1).view(-1)).cpu().numpy()
             ))
-        print('---- ', torch.bincount( pred_q0.argmax(1).view(-1) ))
     print('Epoch {}: The mIoU {:.2f}, loss {:.2f}, mIoU0 {:.2f}'.format(
         epoch + 1, train_Ious.mean(), train_losses.mean(), train_Ious0.mean() ))
 
