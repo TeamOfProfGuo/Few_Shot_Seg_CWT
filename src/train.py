@@ -205,7 +205,6 @@ def do_epoch(
             spprt_imgs_reshape = spprt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
             s_label_reshape = s_label.squeeze(0).long() # [n_shots, img_size, img_size]
 
-        pdb.set_trace()
         binary_cls = nn.Conv2d(args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False).cuda()  # classifier
 
         optimizer = optim.SGD(binary_cls.parameters(), lr=args.cls_lr)
@@ -244,6 +243,8 @@ def do_epoch(
         criterion = nn.CrossEntropyLoss(
             weight=torch.tensor([1.0, len(q_back_pix[0]) / (len(q_target_pix[0]) + 1e-12)]).cuda(),
             ignore_index=255)
+
+        pdb.set_trace()
 
         model.eval()
         with torch.no_grad():
