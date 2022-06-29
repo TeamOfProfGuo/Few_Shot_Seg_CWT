@@ -1,5 +1,6 @@
 # encoding:utf-8
 
+import pdb
 import os
 import random
 import numpy as np
@@ -204,6 +205,7 @@ def do_epoch(
             spprt_imgs_reshape = spprt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
             s_label_reshape = s_label.squeeze(0).long() # [n_shots, img_size, img_size]
 
+        pdb.set_trace()
         binary_cls = nn.Conv2d(args.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False).cuda()  # classifier
 
         optimizer = optim.SGD(binary_cls.parameters(), lr=args.cls_lr)
