@@ -1,12 +1,12 @@
 DATA:
   train_name: coco
-  test_name: default
+  test_name: default     # test model on different data
   train_split: 0
-  test_split: default
-  data_root: COCO/
-  train_list: COCO/train_list.txt
-  val_list: COCO/val_list.txt
-  num_classes_tr: 2 # Counting background for training
+  test_split: default    # test model on different data
+  data_root: /coco/
+  train_list: lists/coco/train.txt
+  val_list: lists/coco/val.txt
+  num_classes_tr: 2    # Counting background for training
   num_classes_val: 20
   use_split_coco: True
   workers: 2
@@ -18,47 +18,53 @@ DATA:
   scale_max: 2.0
   rot_min: -10
   rot_max: 10
-  augmentations: ['hor_flip', 'vert_flip', 'resize']
+  augmentations: ['hor_flip', 'resize_np']
 
 TRAIN:
   ckpt_path: checkpoints/
-  batch_size: 1      # meta_train batch size
+  batch_size: 1
   epochs: 20
-  log_freq : 50
-  debug: False
-  save_models: True
+  save_models: False
   cls_lr: 0.0025
-  trans_lr: 0.0025
+  trans_lr: 0.002
   scale_lr: 1.0
   mixup: False
-  lr_stepsize: 30
+  lr_stepsize: 30       # LR scheduler
   momentum: 0.9
-  gamma: 0.1
+  gamma: 0.1            # LR scheduler
   nesterov: True
   weight_decay: 0.0001
   main_optim: SGD
   scheduler: cosine
   milestones: [40, 70]
-  iter_per_epoch: 6000
+  log_iter: 4000
   adapt_iter: 200
 
 MODEL:
   arch: resnet
-  pretrained: False
+  pretrained: False   # Means backbone has been pretrained
   bins: [1, 2, 3, 6]
-  dropout: 0.1
+  dropout: 0.1        # ppm dropout
   m_scale: False
   layers: 50
   bottleneck_dim: 512
-  heads: 1
-  resume_weights: /pretrained_models/
-  model_dir: model_ckpt
+  resume_weights: ./pretrained_models/
+
+  aux: False
+  temp: 20.0
+  att_wt: 0.2
+  rmid: l34
+  agg: cat
+  loss_type: wt_dc
+
+  red_dim: False
+  wa: False
 
 EVALUATION:
   shot: 1
   random_shot: False
   episodic: True
-  norm_feat: True
+  norm_feat: True           # ?
   batch_size_val: 100
   manual_seed: 2021
   ckpt_used: best
@@ -66,7 +72,6 @@ EVALUATION:
   FB_param_noise: 0
   smoothing: True
   n_runs: 1
-  save_oracle: False
 
-DISTRIBUTED:
-  gpus: [0]
+Experiment:
+  exp_name: l34_dice_rd512_cat

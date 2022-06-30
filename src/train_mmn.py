@@ -181,12 +181,12 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
             train_iou_compare.update(IoUf[1], IoUf[0])
 
-            if i%100==0 or (epoch==1 and i <= 1190):
+            if i%200==0 or (epoch==1 and i <= 2000 and i%10==0):
                 log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} '
                     'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
                     q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
-            if i%1190==0:
+            if i% args.log_iter==0:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
@@ -195,6 +195,7 @@ def main(args: argparse.Namespace) -> None:
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
                     max_val_mIoU = val_Iou.item()
+                    log('----------- Max_mIoU = {:.3f}-----------'.format(max_val_mIoU))
                     filename_transformer = os.path.join(sv_path, f'best.pth')
                     if args.save_models:
                         log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
@@ -202,6 +203,7 @@ def main(args: argparse.Namespace) -> None:
                                     'optimizer': optimizer_meta.state_dict()}, filename_transformer)
                 if val_Iou1.item() > max_val_mIoU1:
                     max_val_mIoU1 = val_Iou1.item()
+                    log('----------- Max_mIoU1 = {:.3f}-----------'.format(max_val_mIoU1))
                     filename_transformer = os.path.join(sv_path, f'best1.pth')
                     if args.save_models:
                         log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))

@@ -23,6 +23,7 @@ SHOT=$4
 echo "start"
 singularity exec --nv \
             --overlay /scratch/lg154/python36/python36.ext3:ro \
+            --overlay /scratch/work/public/ml-datasets/coco/coco-2014.sqf:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
             python -m src.train_mmn --config config_files/${DATA}_mmn.yaml \
@@ -33,7 +34,7 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 12 \
-					 > log_wa.txt 2>&1"
+					 > log_coco.txt 2>&1"
 
 echo "finish"
 
