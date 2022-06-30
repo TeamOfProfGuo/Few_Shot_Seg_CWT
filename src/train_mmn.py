@@ -96,6 +96,7 @@ def main(args: argparse.Namespace) -> None:
             param.requires_grad = False
 
     # ========= Data  ==========
+    pdb.set_trace()
     train_loader, train_sampler = get_train_loader(args)
     episodic_val_loader, _ = get_val_loader(args)
 
