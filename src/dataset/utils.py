@@ -61,7 +61,7 @@ def make_dataset(
             class_file_dict[k] += v
 
     return image_label_list, class_file_dict
-    # image_label_list：list of 所有包含的图片, class_file_dict：cls_id->相应图片list
+    # image_label_list：list of 所有包含的图片 [(image_filename, label_filename)], class_file_dict：cls_id->相应图片list
 
 
 def process_image(
@@ -96,20 +96,20 @@ def process_image(
     c: int
     new_label_class = []                                # 选取符合条件, 在meta train中的label
     for c in label_class:
-        if c in class_list:
+        if c in class_list:                             # 保证cls在当前图片中占有一定的比重
             tmp_label = np.zeros_like(label)
-            target_pix = np.where(label == c)
+            target_pix = np.where(label == c)          # 返回 row idx 和 col idx
             tmp_label[target_pix[0], target_pix[1]] = 1
             if tmp_label.sum() >= 2 * 32 * 32:
                 new_label_class.append(c)
 
-    label_class = new_label_class
+    label_class = new_label_class    # 筛选了当前图片中满足条件（最少有32*32*2个pixel）的所有cls
 
     image_label_list: List[Tuple[str, str]] = []
     class_file_dict: Dict[int, List[Tuple[str, str]]] = defaultdict(list)
 
     if len(label_class) > 0:
-        image_label_list.append(item)
+        image_label_list.append(item)  # item包含 image filename & label filname
 
         for c in label_class:
             assert c in class_list

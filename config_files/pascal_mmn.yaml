@@ -57,7 +57,7 @@ MODEL:
   att_wt: 0.2
   rmid: l34      # nr, l2, l4
 
-  sem: False
+  red_dim: 512
   wa: False
 
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_dice_cat_nv
+  exp_name: l34_dice_rd512_cat
