@@ -25,7 +25,7 @@ class MMN(nn.Module):
             for bid in self.bid_lst:
                 c_in = self.feature_channels[bid]
                 if isinstance(self.red_dim, int):
-                    setattr(self, "rd_" + str(bid), nn.Sequential(nn.Conv2d(c_in, red_dim, 3, stride=1, padding=1),
+                    setattr(self, "rd_" + str(bid), nn.Sequential(nn.Conv2d(c_in, red_dim, kernel_size=1, stride=1, padding=1),
                                                                   nn.ReLU(inplace=True)))
                     c_in = red_dim
                 setattr(self, "wa_"+str(bid), WeightAverage(c_in))

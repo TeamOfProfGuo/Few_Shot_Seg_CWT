@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=nv
+#SBATCH --job-name=k1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
