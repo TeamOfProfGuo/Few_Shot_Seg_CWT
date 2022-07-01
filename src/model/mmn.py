@@ -15,41 +15,47 @@ class MMN(nn.Module):
         self.agg = agg
         self.red_dim = red_dim  # Dim(int) or False
         self.wa = wa            # True or False
-        match_ch = 1 if agg=='sum' else len(args.rmid)-1
-        self.bid_lst = [int(num) - 1 for num in list(args.rmid[1:])]  # [0, 1, 2, 3]
+        self.bid_lst = [int(num) for num in list(args.rmid[1:])]  # [1, 2, 3, 4]
 
         if self.args.layers == 50:
             self.nbottlenecks = [3, 4, 6, 3]
             self.feature_channels = [256, 512, 1024, 2048]
         if self.wa or (self.red_dim != False):
             for bid in self.bid_lst:
-                c_in = self.feature_channels[bid]
+                c_in = self.feature_channels[bid-1]
                 if isinstance(self.red_dim, int):
                     setattr(self, "rd_" + str(bid), nn.Sequential(nn.Conv2d(c_in, red_dim, kernel_size=1, stride=1, padding=0, bias=False),
                                                                   nn.ReLU(inplace=True)))
                     c_in = red_dim
                 setattr(self, "wa_"+str(bid), WeightAverage(c_in))
 
+        if agg == 'sum':
+            match_ch = 1
+        else:
+            match_ch = sum([self.nbottlenecks[i-1] if str(i) in str(args.all_lr) else 1 for i in self.bid_lst])
         self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True, in_channel=match_ch)
 
     def forward(self, fq_lst, fs_lst, f_q, f_s):
         B, ch, h, w = f_q.shape
 
         corr_lst = []
-        for idx in self.bid_lst[::-1]:
-            fq_fea = fq_lst[idx]
-            fs_fea = fs_lst[idx]
-            if self.red_dim:
-                fq_fea = getattr(self, 'rd_'+str(idx))(fq_fea)
-                fs_fea = getattr(self, 'rd_'+str(idx))(fs_fea)
-            if self.wa:
-                fq_fea = getattr(self, "wa_"+str(idx))(fq_fea)
-                fs_fea = getattr(self, 'wa_'+str(idx))(fs_fea)
-            fq_fea = F.normalize(fq_fea, dim=1)
-            fs_fea = F.normalize(fs_fea, dim=1)
-            corr = get_corr(fq_fea, fs_fea)
-            corr4d = corr.view(B, -1, h, w, h, w)
-            corr_lst.append(corr4d)
+        for idx in self.bid_lst[::-1]:   # [4, 3]
+            num_lr = len(fq_lst[idx])
+            start_lr = 0 if (str(idx) in str(self.args.all_lr)) else num_lr-1
+            for lr in range(start_lr,  num_lr):
+                fq_fea = fq_lst[idx][lr]
+                fs_fea = fs_lst[idx][lr]
+                if self.red_dim:
+                    fq_fea = getattr(self, 'rd_'+str(idx))(fq_fea)
+                    fs_fea = getattr(self, 'rd_'+str(idx))(fs_fea)
+                if self.wa:
+                    fq_fea = getattr(self, "wa_"+str(idx))(fq_fea)
+                    fs_fea = getattr(self, 'wa_'+str(idx))(fs_fea)
+                fq_fea = F.normalize(fq_fea, dim=1)
+                fs_fea = F.normalize(fs_fea, dim=1)
+                corr = get_corr(fq_fea, fs_fea)
+                corr4d = corr.view(B, -1, h, w, h, w)
+                corr_lst.append(corr4d)
 
         corr4d = torch.cat(corr_lst, dim=1)   # [B, L, h, w, h, w]
         if self.agg == 'sum':

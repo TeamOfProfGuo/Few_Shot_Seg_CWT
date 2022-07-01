@@ -53,16 +53,16 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
-  aux: False     #  False or input weight of aux loss
   temp: 20.0
   att_wt: 0.2
-  rmid: l34      # nr, l2, l4
-
-  red_dim: 512
-  wa: False
-
+  aux: False     #  False or input weight of aux loss
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   agg: cat
+  rmid: l34      # nr, l2, l4
+  all_lr: l4
+
+  red_dim: False  # False or 512
+  wa: False       # True or False
 
 Classifier:
   dist: cosN
@@ -82,4 +82,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_dice_rd512_cat_k1_nb
+  exp_name: l34_dice_lr4

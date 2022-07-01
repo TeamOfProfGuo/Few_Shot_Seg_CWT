@@ -3,6 +3,8 @@
 import torch
 import numpy as np
 from torch import nn
+from operator import add
+from functools import reduce
 import torch.nn.functional as F
 from .resnet import resnet50, resnet101
 from .vgg import vgg16_bn
@@ -84,16 +86,15 @@ class PSPNet(nn.Module):
             resnet_kwargs['no_relu'] = True
         if args.arch == 'resnet':
             if args.layers == 50:
-                resnet = resnet50(pretrained=args.pretrained, **resnet_kwargs)
+                resnet = resnet50(pretrained=args.pretrained, **resnet_kwargs)  # nbottlenecks = [3, 4, 6, 3]   # channels [256, 512, 1024, 2048]
             else:
-                resnet = resnet101(pretrained=args.pretrained, **resnet_kwargs)
-            self.layer0 = nn.Sequential(
-                resnet.conv1, resnet.bn1, resnet.relu,
-                resnet.conv2, resnet.bn2, resnet.relu,
-                resnet.conv3, resnet.bn3, resnet.relu, resnet.maxpool)
+                resnet = resnet101(pretrained=args.pretrained, **resnet_kwargs) # nbottlenecks = [3, 4, 23, 3]  # channels [256, 512, 1024, 2048]
+
+            self.layer0 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu,
+                                        resnet.conv2, resnet.bn2, resnet.relu,
+                                        resnet.conv3, resnet.bn3, resnet.relu, resnet.maxpool)
 
             self.layer1, self.layer2, self.layer3, self.layer4 = resnet.layer1, resnet.layer2, resnet.layer3, resnet.layer4
-            self.feature_res = (53, 53)
 
         elif args.arch == 'vgg':
             vgg = vgg16_bn(pretrained=args.pretrained)
@@ -154,7 +155,7 @@ class PSPNet(nn.Module):
         else:
             return x
 
-    def extract_features(self, x):
+    def get_feat_backbone(self, x):
         x = self.layer0(x)
         x_1 = self.layer1(x)
         x_2 = self.layer2(x_1)
@@ -163,31 +164,18 @@ class PSPNet(nn.Module):
             x_4, x4_nr = self.layer4(x_3)
         else:
             x_4 = self.layer4(x_3)
+        return [x_1, x_2, x_3, x_4]
 
-        if self.m_scale:
-            x = torch.cat([x_2, x_3], dim=1)
-        else:
-            x = x_4
-        x = self.ppm(x)
+    def extract_features(self, x):
+        x_4, feat_lst = self.get_feat_list(x)    # feat_lst 其实是 dict
+
+        x = self.ppm(x_4)
         x = self.bottleneck(x)
 
         if self.rmid is not None and ('l' in self.rmid or 'mid' in self.rmid):
-            return x, [x_1, x_2, x_3, x_4]
-        elif self.rmid == 'nr':
-            return x, [x4_nr]
+            return x, feat_lst
         else:
             return x, []
-
-    def extract_features_backbone(self, x):
-        x = self.layer0(x)
-        x = self.layer1(x)
-        x_2 = self.layer2(x)
-        x_3 = self.layer3(x_2)
-        if self.m_scale:
-            x = torch.cat([x_2, x_3], dim=1)
-        else:
-            x = self.layer4(x_3)
-        return x
 
     def classify(self, features, shape):
         x = self.classifier(features)
@@ -266,6 +254,22 @@ class PSPNet(nn.Module):
         if ret_corr:
             return ig_mask, corr
         return ig_mask    # [B, 3600]
+
+    def get_feat_list(self, img,):
+        feats = dict()
+
+        # Layer 0 and layer1
+        feat = self.layer0(img)
+        feat = self.layer1(feat)
+
+        # Layer 2,3,4
+        for lid in [2, 3, 4]:
+            n_bottleneck = len(self.__getattr__('layer'+str(lid)))
+            for bid in range(n_bottleneck):
+                feat = self.__getattr__('layer'+str(lid))[bid](feat)
+                feats[lid] = feats.get(lid, []) + [feat]
+
+        return feat, feats
 
 
 class CosCls(nn.Module):
