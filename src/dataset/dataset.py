@@ -64,7 +64,7 @@ def get_train_loader(args, episodic=True, return_path=False):
     return train_loader, None
 
 
-def get_val_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
+def get_val_loader(args, episodic=True, return_path=False):
     """
         Build the episodic validation loader.
     """
@@ -89,16 +89,24 @@ def get_val_loader(args: argparse.Namespace) -> torch.utils.data.DataLoader:
     class_list = filter_classes(args.train_name, args.train_split, test_name, test_split, split_classes)  # 只有cross domain时才有用
 
     # ====== Build loader ======
-    val_data = EpisodicData(mode_train=False, transform=val_transform, class_list=class_list, args=args)
+    if episodic:
+        val_data = EpisodicData(mode_train=False, transform=val_transform, class_list=class_list, args=args)
 
-    val_loader = torch.utils.data.DataLoader(
-        val_data,
-        batch_size=1,
-        shuffle=False,
-        num_workers=args.workers,
-        pin_memory=True,
-        sampler=val_sampler
-    )
+        val_loader = torch.utils.data.DataLoader(
+            val_data,
+            batch_size=1,
+            shuffle=False,
+            num_workers=args.workers,
+            pin_memory=True,
+            sampler=val_sampler)
+    else:
+        class_list = split_classes[args.train_name][args.train_split]['train']
+        val_data = StandardData(args, val_transform, class_list=class_list, return_paths=return_path, data_list_path=args.val_list)
+        val_loader = torch.utils.data.DataLoader(val_data, batch_size=args.batch_size,
+                                                 shuffle=False,
+                                                 num_workers=args.workers,
+                                                 pin_memory=True,
+                                                 sampler=val_sampler)
 
     return val_loader, val_transform
 

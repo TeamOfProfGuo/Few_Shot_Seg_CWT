@@ -371,9 +371,6 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
     return val_IoUs.mean(), val_losses.mean()
 
 
-def standard_validate():
-    pass
-
 if __name__ == "__main__":
     args = parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(str(x) for x in args.gpus)

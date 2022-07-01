@@ -49,7 +49,7 @@ MODEL:
   bottleneck_dim: 512
 
 EVALUATION:
-  episodic_val: True
+  episodic_val: False
   shot: 1
   random_shot: False
   norm_feat: True
@@ -63,10 +63,10 @@ EVALUATION:
   save_oracle: False
 
 CLASSIFIER:
-  dist: cosN
+  dist: dot
   cls_type: ooo
   adapt_iter: 200
 
 
 EXPERIMENT:
-  exp_name: pretrain_rooo
+  exp_name: pretrain_dot_val

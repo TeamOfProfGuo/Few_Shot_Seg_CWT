@@ -19,7 +19,7 @@ from typing import Tuple, Dict
 from torch import Tensor
 from .model.pspnet import get_model
 
-from .test import standard_validate, episodic_validate
+from .test import episodic_validate
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
@@ -77,10 +77,11 @@ def main(args: argparse.Namespace) -> None:
 
     # ========== Validation ==================
     validate_fn = episodic_validate if args.episodic_val else standard_validate
+    log(f"==> Using {'episodic' if args.episodic_val else 'standard'} validation\n")
 
     # ========= Data  ==========
     train_loader, train_sampler = get_train_loader(args, episodic=False)
-    val_loader, _ = get_val_loader(args)  # mode='train' means that we will validate on images from validation set, but with the bases classes
+    val_loader, _ = get_val_loader(args, episodic=args.episodic_val)  # mode='train' means that we will validate on images from validation set, but with the bases classes
 
     # ========== Scheduler  ================
     scheduler = get_scheduler(args, optimizer, len(train_loader))
@@ -218,89 +219,31 @@ def compute_loss(args, model, images, targets, num_classes):
     return loss
 
 
-def validate_epoch(args, val_loader, model):
-    log('==> Start testing')
+def standard_validate(args, val_loader, model, use_callback):
 
-    iter_num = 0
-    start_time = time.time()
     loss_meter = AverageMeter()
-    cls_intersection = defaultdict(int)  # Default value is 0
-    cls_union = defaultdict(int)
-    IoU = defaultdict(float)
+    intersections = torch.zeros(args.num_classes_tr).cuda()
+    unions = torch.zeros(args.num_classes_tr).cuda()
 
-    cls_intersection0 = defaultdict(int)  # Default value is 0
-    cls_union0 = defaultdict(int)
-    IoU0 = defaultdict(float)
+    model.eval()
+    for i, (images, gt) in enumerate(val_loader):
 
-    for e in range(args.test_num):
-
-        iter_num += 1
-        try:
-            qry_img, q_label, spprt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
-        except:
-            iter_loader = iter(val_loader)
-            qry_img, q_label, spprt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
         if torch.cuda.is_available():
-            spprt_imgs = spprt_imgs.cuda()
-            s_label = s_label.cuda()
-            q_label = q_label.cuda()
-            qry_img = qry_img.cuda()
+            images = images.cuda()  # [1, 1, 3, h, w]
+            gt = gt.cuda()          # [1, 1, h, w]
 
-        # ====== Phase 1: Train a new binary classifier on support samples. ======
-        spprt_imgs = spprt_imgs.squeeze(0)   # [n_shots, 3, img_size, img_size]
-        s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
-
-        # fine-tune classifier
-        model.eval()
-        with torch.no_grad():
-            f_s, fs_lst = model.extract_features(spprt_imgs)
-        model.inner_loop(f_s, s_label)
-
-        # ====== Phase 2: Update query score using attention. ======
-        model.eval()
-        with torch.no_grad():
-            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-            pd_q0 = model.classifier(f_q)
-            pd_s  = model.classifier(f_s)
-            pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-        # 用layer4 的output来做attention
-        fea_idx = args.rmid-2 if args.rmid in [3, 4] else -1
-        fs_fea = fs_lst[fea_idx]  # [1, 2048, 60, 60]
-        fq_fea = fq_lst[fea_idx]  # [1, 2048, 60, 60]
-        pred_q = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s)
-        # cross attention: (f_q, f_s, fq_fea, fs_fea, s_label), self att: (f_q, f_q, fq_fea, fq_fea, q_label)
-        pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-
-        # IoU and loss
-        curr_cls = subcls[0].item()  # 当前episode所关注的cls
-        intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, 2, 255)
-        intersection, union = intersection.cpu(), union.cpu()
-        cls_intersection[curr_cls] += intersection[1]  # only consider the FG
-        cls_union[curr_cls] += union[1]                # only consider the FG
-        IoU[curr_cls] = cls_intersection[curr_cls] / (cls_union[curr_cls] + 1e-10)   # cls wise IoU
-
-        intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
-        intersection0, union0 = intersection0.cpu(), union0.cpu()
-        cls_intersection0[curr_cls] += intersection0[1]  # only consider the FG
-        cls_union0[curr_cls] += union0[1]  # only consider the FG
-        IoU0[curr_cls] = cls_intersection0[curr_cls] / (cls_union0[curr_cls] + 1e-10)  # cls wise IoU
-
-        criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
-        loss = criterion_standard(pred_q, q_label)
+        logits = model(images).detach()
+        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+        loss = loss_fn(logits, gt)
         loss_meter.update(loss.item())
 
-        if (iter_num % 200 == 0):
-            mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
-            mIoU0 = np.mean([IoU0[i] for i in IoU0])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                iter_num, args.test_num, mIoU0, mIoU, loss_meter=loss_meter))
+        intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)
+        intersections += intersection
+        unions += union
 
-    runtime = time.time() - start_time
-    mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    log('mIoU---Val result: mIoU0 {:.4f}, mIoU {:.4f} | time used {:.1f}m.'.format(mIoU0, mIoU, runtime/60))
-    for class_ in cls_union:
-        log("Class {} : {:.4f}".format(class_, IoU[class_]))
-    log('\n')
+    mIoU = (intersections / (unions + 1e-10)).mean()
+    acc = intersections.sum() / unions.sum()
+    log(f'Testing results: running loss {loss_meter.avg:.2f}, Acc {acc:.4f}, mIoU {mIoU:.4f}\n')
 
     return mIoU, loss_meter.avg
 

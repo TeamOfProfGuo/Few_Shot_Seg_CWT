@@ -35,7 +35,7 @@ class MMN(nn.Module):
             match_ch = sum([self.nbottlenecks[i-1] if str(i) in str(args.all_lr) else 1 for i in self.bid_lst])
         self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True, in_channel=match_ch)
 
-    def forward(self, fq_lst, fs_lst, f_q, f_s):
+    def forward(self, fq_lst, fs_lst, f_q, f_s):   # fq_lst: dict{bid: [bottleneck layers]}
         B, ch, h, w = f_q.shape
 
         corr_lst = []
