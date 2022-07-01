@@ -38,6 +38,7 @@ TRAIN:
   main_optim: SGD
   scheduler: cosine
   milestones: [40, 70]
+  log_iter: 1190
   adapt_iter: 200
 
 MODEL:

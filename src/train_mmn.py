@@ -96,7 +96,6 @@ def main(args: argparse.Namespace) -> None:
             param.requires_grad = False
 
     # ========= Data  ==========
-    pdb.set_trace()
     train_loader, train_sampler = get_train_loader(args)
     episodic_val_loader, _ = get_val_loader(args)
 
@@ -182,7 +181,7 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
             train_iou_compare.update(IoUf[1], IoUf[0])
 
-            if i%200==0 or (epoch==1 and i <= 2000 and i%10==0):
+            if i%100==0 or (epoch==1 and i <= 1000 and i%10==0):
                 log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} '
                     'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
