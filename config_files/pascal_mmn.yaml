@@ -82,4 +82,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_dice_rd512_cat_k1
+  exp_name: l34_dice_rd512_cat_k1_nb
