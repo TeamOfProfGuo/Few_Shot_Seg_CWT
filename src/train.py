@@ -112,6 +112,7 @@ def main(args: argparse.Namespace) -> None:
 
     log_iter = iter_per_epoch
 
+    pdb.set_trace()
     # ====== Training  ======
     print('==> Start training')
     for epoch in range(args.epochs):
@@ -278,7 +279,7 @@ def do_epoch(
         IoUb0, IoUf0 = intersection / (union + 1e-10)
         train_Ious0[i] = (IoUb0 + IoUf0)/2
 
-        if epoch == 0:
+        if (epoch == 0 and i%100==0) or i%500==0:
             print('iter {} IoUf {:.2f}, IoUb {:.2f}, IoUf0 {:.2f}, IoUb0 {:.2f}, pred_q0 {}'.format(
                 i, IoUf, IoUb, IoUf0, IoUb0, torch.bincount(pred_q0.argmax(1).view(-1)).cpu().numpy()
             ))
