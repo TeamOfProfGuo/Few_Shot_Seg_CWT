@@ -53,6 +53,7 @@ MODEL:
   temp: 20.0
   att_wt: 0.2
   aux: False     #  False or input weight of aux loss
+  inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   agg: cat
   rmid: l34      # nr, l2, l4

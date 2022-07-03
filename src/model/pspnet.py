@@ -10,6 +10,7 @@ from .resnet import resnet50, resnet101
 from .vgg import vgg16_bn
 from .model_util import get_corr, get_ig_mask
 from torch.nn.utils.weight_norm import WeightNorm
+from .model_util import SegLoss
 
 
 def get_model(args) -> nn.Module:
@@ -79,7 +80,7 @@ class PSPNet(nn.Module):
         self.m_scale = args.m_scale
         self.bottleneck_dim = args.bottleneck_dim
         self.rmid = args.get('rmid', None)     # 是否返回中间层
-        self.args = args
+        self.args = args                 # all_lr
 
         resnet_kwargs = {}
         if self.rmid == 'nr':
@@ -190,13 +191,7 @@ class PSPNet(nn.Module):
         # optimizer and loss function
         optimizer = torch.optim.SGD(self.classifier.parameters(), lr=self.args.cls_lr)
 
-        s_label_arr = s_label.cpu().numpy().copy()  # [ n_shots, img_size, img_size]
-        back_pix = np.where(s_label_arr == 0)
-        target_pix = np.where(s_label_arr == 1)
-        weight = torch.tensor([1.0, len(back_pix[0]) / len(target_pix[0])])  # bg的weight: num of gf pixels
-        if torch.cuda.is_available():
-            weight = weight.cuda()
-        criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=255)
+        criterion = SegLoss(loss_type=self.args.inner_loss_type)
 
         # inner loop 学习 classifier的params
         for index in range(self.args.adapt_iter):
@@ -267,7 +262,8 @@ class PSPNet(nn.Module):
             n_bottleneck = len(self.__getattr__('layer'+str(lid)))
             for bid in range(n_bottleneck):
                 feat = self.__getattr__('layer'+str(lid))[bid](feat)
-                feats[lid] = feats.get(lid, []) + [feat]
+                if str(lid) in self.args.get('all_lr', 'l') or bid == n_bottleneck-1:  # to decide whether to to return intermediate layers
+                    feats[lid] = feats.get(lid, []) + [feat]
 
         return feat, feats
 

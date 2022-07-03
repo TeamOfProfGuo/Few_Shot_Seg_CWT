@@ -39,10 +39,8 @@ class MMN(nn.Module):
         B, ch, h, w = f_q.shape
 
         corr_lst = []
-        for idx in self.bid_lst[::-1]:   # [4, 3]
-            num_lr = len(fq_lst[idx])
-            start_lr = 0 if (str(idx) in str(self.args.all_lr)) else num_lr-1
-            for lr in range(start_lr,  num_lr):
+        for idx in self.bid_lst[::-1]:
+            for lr in range(len(fq_lst[idx])):
                 fq_fea = fq_lst[idx][lr]
                 fs_fea = fs_lst[idx][lr]
                 if self.red_dim:
