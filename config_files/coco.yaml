@@ -51,7 +51,7 @@ MODEL:
   layers: 50
   bottleneck_dim: 512
   heads: 1
-  resume_weights: /pretrained_models/
+  resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
 EVALUATION:

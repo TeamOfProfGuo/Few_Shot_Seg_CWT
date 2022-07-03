@@ -112,7 +112,6 @@ def main(args: argparse.Namespace) -> None:
 
     log_iter = iter_per_epoch
 
-    pdb.set_trace()
     # ====== Training  ======
     print('==> Start training')
     for epoch in range(args.epochs):
