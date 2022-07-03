@@ -38,7 +38,7 @@ TRAIN:
   scheduler: cosine
   milestones: [40, 70]
   log_iter: 2000
-  adapt_iter: 200
+  adapt_iter: 100
 
 MODEL:
   arch: resnet
@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_dice_cat
+  exp_name: l34_dice_cat_b100
