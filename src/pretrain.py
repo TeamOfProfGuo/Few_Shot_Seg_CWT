@@ -123,7 +123,7 @@ def main(args: argparse.Namespace) -> None:
             if i % args.log_freq == 0:
                 model.eval()
                 logits = model(images)
-                intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)
+                intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)  # gt [B, 473, 473]
 
                 allAcc = (intersection.sum() / (target.sum() + 1e-10))  # scalar
                 mAcc = (intersection / (target + 1e-10)).mean()
@@ -239,9 +239,9 @@ def standard_validate(args, val_loader, model, use_callback):
         loss = loss_fn(logits, gt)
         loss_meter.update(loss.item())
 
-        intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)
-        intersections += intersection
-        unions += union
+        intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)  # gt [B, 473, 473]
+        intersections += intersection  # [16]
+        unions += union                # [16]
 
     mIoU = (intersections / (unions + 1e-10)).mean()
     acc = intersections.sum() / unions.sum()
