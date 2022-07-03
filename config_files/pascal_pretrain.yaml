@@ -69,4 +69,4 @@ CLASSIFIER:
 
 
 EXPERIMENT:
-  exp_name: pretrain_dot_val
+  exp_name: pretrain_dot_val_debug

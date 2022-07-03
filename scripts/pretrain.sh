@@ -30,7 +30,7 @@ singularity exec --nv \
 						    shot ${SHOT} \
 						    cls_lr 0.1 \
 						    batch_size_val 1 \
-						    
+
 					 > log.txt 2>&1"
 
 echo "finish"
