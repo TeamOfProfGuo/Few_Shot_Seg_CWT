@@ -18,7 +18,7 @@ DATA:
   scale_max: 2.0
   rot_min: -10
   rot_max: 10
-  augmentations: ['hor_flip', 'vert_flip', 'resize']
+  augmentations: ['hor_flip', 'resize_np']
 
 TRAIN:
   ckpt_path: checkpoints/
@@ -50,13 +50,13 @@ MODEL:
   layers: 50
   bottleneck_dim: 512
   backbone_dim: 2048
-  temp: 40.0
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
+  temp: 40.0
   rmid: nr
 
 Classifier:
-  dist: cos
+  dist: cosN
   cls_type: ooo
 
 EVALUATION:
