@@ -57,7 +57,7 @@ MODEL:
   att_wt: 0.2
   aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_dc
-  loss_type: ce   # 'wt_dc',  'wt_ce'
+  loss_type: wt_ce   # 'wt_dc',  'wt_ce'
   agg: cat
   rmid: l34      # nr, l2, l4
   all_lr: l
@@ -83,4 +83,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_wdc_ce
+  exp_name: l34_wdc_wce
