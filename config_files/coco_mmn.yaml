@@ -38,7 +38,7 @@ TRAIN:
   scheduler: cosine
   milestones: [40, 70]
   log_iter: 2000
-  adapt_iter: 100
+  adapt_iter: 200
 
 MODEL:
   arch: resnet
@@ -51,7 +51,7 @@ MODEL:
   resume_weights: ./pretrained_models/
 
   temp: 20.0
-  att_wt: 0.2
+  att_wt: 0.3
   aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
@@ -63,7 +63,7 @@ MODEL:
   wa: False       # True or False
 
 Classifier:
-  dist: cosN
+  dist: dot
   cls_type: ooo
 
 
@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_dice_cat_i100_lr05
+  exp_name: l34_wt3_dot_i200_lr05
