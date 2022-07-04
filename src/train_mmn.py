@@ -169,6 +169,8 @@ def main(args: argparse.Namespace) -> None:
             if args.scheduler == 'cosine':
                 scheduler.step()
 
+            if epoch == 1 and i==1:
+                log(Trans)
             # Print loss and mIoU
             IoUb, IoUf = dict(), dict()
             for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2)]:
