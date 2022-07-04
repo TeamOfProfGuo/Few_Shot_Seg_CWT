@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=r1
+#SBATCH --job-name=co
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -30,7 +30,6 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    cls_lr 0.1 \
 						    batch_size 1 \
 						    batch_size_val 1 \
 					 > log.txt 2>&1"

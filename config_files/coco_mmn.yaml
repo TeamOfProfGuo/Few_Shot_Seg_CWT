@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_dice_cat_b100
+  exp_name: l34_dice_cat_i100_lr0025
