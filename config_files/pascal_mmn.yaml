@@ -66,8 +66,8 @@ MODEL:
   wa: False       # True or False
 
 Classifier:
-  dist: cosN
-  cls_type: ooo
+  dist: dot
+  cls_type: rooo
 
 EVALUATION:
   shot: 1
@@ -83,4 +83,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_wce_wdc
+  exp_name: l34_dotr

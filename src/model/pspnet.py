@@ -131,10 +131,10 @@ class PSPNet(nn.Module):
 
         if args.get('dist', 'dot') == 'dot':
             self.classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False)
-        elif args.get('dist') == 'cos':
-            self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, WeightNormR=False, cls_type=args.cls_type)
-        elif args.get('dist') == 'cosN':  # adaptive weight norm
-            self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, WeightNormR=True, cls_type=args.cls_type)
+            if args.cls_type[0] == 'r':
+                WeightNorm.apply(self.classifier, 'weight', dim=0)  # [2, 512, 1, 1]
+        elif args.get('dist') in ['cos', 'cosN']:
+            self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
 
         self.gamma = nn.Parameter(torch.tensor(0.2))
 
@@ -269,10 +269,9 @@ class PSPNet(nn.Module):
 
 
 class CosCls(nn.Module):
-    def __init__(self, in_dim=512, n_classes=2, WeightNormR=False, cls_type = '000'):
+    def __init__(self, in_dim=512, n_classes=2, cls_type = '0000'):
         super(CosCls, self).__init__()
-        self.weight_norm, self.bias, self.temp = parse_param_coscls(cls_type)
-        self.WeightNormR = WeightNormR
+        self.WeightNormR, self.weight_norm, self.bias, self.temp = parse_param_coscls(cls_type)
         self.cls = nn.Conv2d(in_dim, n_classes, kernel_size=1, bias=self.bias)
         if self.WeightNormR:
             WeightNorm.apply(self.cls, 'weight', dim=0) #split the weight update component to direction and norm
@@ -287,7 +286,7 @@ class CosCls(nn.Module):
             self.cls.weight.data = F.normalize(self.cls.weight.data, p=2, dim=1, eps=0.00001)
 
         cos_dist = self.cls(x_norm)   #matrix product by forward function, but when using WeightNorm, this also multiply the cosine distance by a class-wise learnable norm, see the issue#4&8 in the github
-        scores = self.scale_factor* (cos_dist)
+        scores = self.scale_factor * (cos_dist)
         return scores
 
     def reset_parameters(self):   # 与torch自己的method同名
@@ -296,11 +295,13 @@ class CosCls(nn.Module):
 
 
 def parse_param_coscls(cls_type):
+    WeightNormR_dt = {'r': True, '0': False, 'o': False}
     weight_norm_dt = {'n': True, '0': False, 'o': False}
     bias_dt = {'b': True, '0': False, 'o': False}
     temp_dt = {'t': True, '0': False, 'o': False}
-    print('weight norm {}, bias {}, temp {}'.format( weight_norm_dt[cls_type[0]], bias_dt[cls_type[1]], temp_dt[cls_type[2]] ))
-    return weight_norm_dt[cls_type[0]], bias_dt[cls_type[1]], temp_dt[cls_type[2]]
+    print('weight norm Regular {} weight norm {}, bias {}, temp {}'.format(
+        WeightNormR_dt(cls_type[0]), weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]] ))
+    return WeightNormR_dt(cls_type[0]), weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]]
 
 
 def get_classifier(args, num_classes=None):
@@ -310,7 +311,5 @@ def get_classifier(args, num_classes=None):
 
     if args.get('dist', 'dot') == 'dot':
         return nn.Conv2d(in_dim, num_classes, kernel_size=1, bias=False)
-    elif args.get('dist') == 'cos':
-        return CosCls(in_dim=in_dim, n_classes=num_classes, WeightNormR=False, cls_type=args.cls_type)
-    elif args.get('dist') == 'cosN':  # adaptive weight norm
-        return CosCls(in_dim=in_dim, n_classes=num_classes, WeightNormR=True,  cls_type=args.cls_type)
+    elif args.get('dist') == 'cos' or args.get('dist') == 'cosN':
+        return CosCls(in_dim=in_dim, n_classes=num_classes, cls_type=args.cls_type)
