@@ -53,6 +53,8 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
+  conv4d: cv4  # red, cv4
+
   temp: 20.0
   att_wt: 0.2
   aux: False     #  False or input weight of aux loss
@@ -66,7 +68,7 @@ MODEL:
   wa: False       # True or False
 
 Classifier:
-  dist: cos
+  dist: dot
   cls_type: rooo
 
 EVALUATION:
@@ -83,4 +85,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_rooo
+  exp_name: l34_dotr_cv4
