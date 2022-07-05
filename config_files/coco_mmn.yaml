@@ -25,7 +25,7 @@ TRAIN:
   batch_size: 1
   epochs: 5
   save_models: False
-  cls_lr: 0.05
+  cls_lr: 0.1
   trans_lr: 0.002
   scale_lr: 1.0
   mixup: False
@@ -64,7 +64,7 @@ MODEL:
 
 Classifier:
   dist: dot
-  cls_type: rooo
+  cls_type: oooo
 
 
 EVALUATION:
@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_wt3_dotr_i200_lr05
+  exp_name: l34_wt3_dot_i200_lr1
