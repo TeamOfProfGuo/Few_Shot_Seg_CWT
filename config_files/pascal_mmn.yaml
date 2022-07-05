@@ -53,7 +53,7 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
-  conv4d: cv4  # red, cv4
+  conv4d: red  # red, cv4
 
   temp: 20.0
   att_wt: 0.2
@@ -65,7 +65,7 @@ MODEL:
   all_lr: l
 
   red_dim: False  # False or 512
-  wa: False       # True or False
+  wa: True        # True or False
 
 Classifier:
   dist: dot
@@ -85,4 +85,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_dotr_cv4
+  exp_name: dotr_l34_wa

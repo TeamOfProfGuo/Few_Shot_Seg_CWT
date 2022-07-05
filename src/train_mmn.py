@@ -20,6 +20,7 @@ from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
     parser.add_argument('--config', type=str, required=True, help='config file')
@@ -42,8 +43,6 @@ def main(args: argparse.Namespace) -> None:
     log('save_path {}'.format(sv_path))
 
     log(args)
-
-    log('+++ Check performance of Cross Attention level4 reduce-dimension:1024 +++\n')
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
