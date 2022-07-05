@@ -300,8 +300,8 @@ def parse_param_coscls(cls_type):
     bias_dt = {'b': True, '0': False, 'o': False}
     temp_dt = {'t': True, '0': False, 'o': False}
     print('weight norm Regular {} weight norm {}, bias {}, temp {}'.format(
-        WeightNormR_dt(cls_type[0]), weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]] ))
-    return WeightNormR_dt(cls_type[0]), weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]]
+        WeightNormR_dt[cls_type[0]], weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]] ))
+    return WeightNormR_dt[cls_type[0]], weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]]
 
 
 def get_classifier(args, num_classes=None):
