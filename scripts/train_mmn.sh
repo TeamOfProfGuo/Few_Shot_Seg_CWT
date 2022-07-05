@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=dcdc
+#SBATCH --job-name=p
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
