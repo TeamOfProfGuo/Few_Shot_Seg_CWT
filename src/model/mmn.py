@@ -23,7 +23,7 @@ class MMN(nn.Module):
         if self.wa or (self.red_dim != False):
             for bid in self.bid_lst:
                 c_in = self.feature_channels[bid-1]
-                if isinstance(self.red_dim, int):
+                if isinstance(self.red_dim, int) and self.red_dim != False:
                     setattr(self, "rd_" + str(bid), nn.Sequential(nn.Conv2d(c_in, red_dim, kernel_size=1, stride=1, padding=0, bias=False),
                                                                   nn.ReLU(inplace=True)))
                     c_in = red_dim
