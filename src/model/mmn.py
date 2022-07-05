@@ -60,7 +60,7 @@ class MMN(nn.Module):
             corr4d = torch.sum(corr4d, dim=1, keepdim=True)  # [B, 1, h, w, h, w]
 
         att_fq = self.corr_net.corr_forward(corr4d, v=f_s)
-        fq = (f_q + att_fq * self.args.att_wt)/(1+self.args.att_wt)
+        fq = f_q * (1-self.args.att_wt) + att_fq * self.args.att_wt
 
         return fq, att_fq
 

@@ -25,8 +25,8 @@ TRAIN:
   batch_size: 1
   epochs: 5
   save_models: False
-  cls_lr: 0.1
-  trans_lr: 0.002
+  cls_lr: 0.05
+  trans_lr: 0.001
   scale_lr: 1.0
   mixup: False
   lr_stepsize: 30       # LR scheduler
@@ -51,7 +51,7 @@ MODEL:
   resume_weights: ./pretrained_models/
 
   temp: 20.0
-  att_wt: 0.3
+  att_wt: 0.7
   aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
@@ -60,7 +60,7 @@ MODEL:
   all_lr: l
 
   red_dim: False  # False or 512
-  wa: False       # True or False
+  wa: True       # True or False
 
 Classifier:
   dist: dot
@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_wt3_dot_i200_lr1
+  exp_name: l34_wa_wt7_i200_lr05
