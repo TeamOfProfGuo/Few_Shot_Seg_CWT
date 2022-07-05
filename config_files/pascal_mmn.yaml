@@ -61,7 +61,7 @@ MODEL:
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   agg: cat
-  rmid: l34      # nr, l2, l4
+  rmid: l4      # nr, l2, l4
   all_lr: l
 
   red_dim: False  # False or 512
@@ -85,4 +85,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_l34_wa
+  exp_name: dotr_l4_wa
