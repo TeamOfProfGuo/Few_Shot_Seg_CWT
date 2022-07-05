@@ -64,7 +64,7 @@ MODEL:
 
 Classifier:
   dist: dot
-  cls_type: ooo
+  cls_type: rooo
 
 
 EVALUATION:
@@ -81,4 +81,4 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_wt3_dot_i200_lr05
+  exp_name: l34_wt3_dotr_i200_lr05
