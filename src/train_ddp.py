@@ -17,8 +17,12 @@ from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
+from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log, setup
 import argparse
+
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
+import torch.multiprocessing as mp
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     return cfg
 
 
-def main(args: argparse.Namespace) -> None:
+def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
 
     sv_path = 'mmn_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
@@ -41,8 +45,10 @@ def main(args: argparse.Namespace) -> None:
     ensure_path(sv_path)
     set_log_path(path=sv_path)
     log('save_path {}'.format(sv_path))
-
     log(args)
+
+    print(f"==> Running process rank {rank}.")
+    setup(args, rank, world_size)
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -54,7 +60,7 @@ def main(args: argparse.Namespace) -> None:
         torch.cuda.manual_seed_all(args.manual_seed)
 
     # ====== Model + Optimizer ======
-    model = get_model(args).cuda()
+    model = get_model(args).to(rank)
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
@@ -66,12 +72,10 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(pre_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    if pre_dict[key].shape == pre_weight['module.' + key].shape:
-                        pre_dict[key] = pre_weight['module.' + key]
+                    if pre_dict[key].shape == pre_weight[key].shape:
+                        pre_dict[key] = pre_weight[key]
                     else:
-                        log('Pre-trained shape and model shape for {}: {}, {}'.format(
-                            key, pre_weight['module.' + key].shape, pre_dict[key].shape))
-                        continue
+                        log('weight shape not match {}: {}/{}'.format(key, pre_weight[key].shape, pre_dict[key].shape))
 
             model.load_state_dict(pre_dict, strict=True)
             log("=> loaded weight '{}'".format(fname))
@@ -93,6 +97,9 @@ def main(args: argparse.Namespace) -> None:
             param.requires_grad = False
         for param in model.bottleneck.parameters():
             param.requires_grad = False
+
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model = DDP(model, device_ids=[rank])
 
     # ========= Data  ==========
     train_loader, train_sampler = get_train_loader(args)
@@ -144,9 +151,13 @@ def main(args: argparse.Namespace) -> None:
                 pd_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            
             Trans.train()
-            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)
+            for k, v_lst in fq_lst.items():
+                for i, v in enumerate(v_lst):
+                    fq_lst[k][i] = v.expand(args.shot, -1, -1, -1)
+
+
+            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s, k)
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
