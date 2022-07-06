@@ -87,4 +87,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_l34
+  exp_name: dotr_l34_loss
