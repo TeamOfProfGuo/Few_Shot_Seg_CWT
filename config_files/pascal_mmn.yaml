@@ -67,6 +67,7 @@ MODEL:
   red_dim: False  # False or 512
   wa: True        # True or False
   proj_drop: 0.5
+  att_drop: 0.5
 
 Classifier:
   dist: dot
@@ -86,4 +87,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_l34_wa_pdrop5
+  exp_name: dotr_l34_wa_pdrop5_adrop5

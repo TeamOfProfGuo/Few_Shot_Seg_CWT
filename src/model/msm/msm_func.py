@@ -60,6 +60,7 @@ class WeightAverage(nn.Module):
 
         self.R = R
         self.c_out = c_out
+        self.att_drop = nn.Dropout(args.get('att_drop', 0.0))
         self.proj_drop = nn.Dropout(args.get('proj_drop', 0.0))
 
     def forward(self, x):
@@ -86,6 +87,7 @@ class WeightAverage(nn.Module):
         cos_sim = self.CosSimLayer(phi, theta_dim[:, :, :, :, None, None])  # BS, h, w, R, R
 
         softmax_sim = F.softmax(cos_sim.contiguous().view(batch_size, h, w, -1), dim=3).contiguous().view_as(cos_sim)  # BS, h, w, R, R
+        softmax_sim = self.att_drop(softmax_sim)
 
         g = g.contiguous().view(batch_size, self.R, self.R, self.c_out, h, w)
         g = g.permute(0, 4, 5, 1, 2, 3)  # BS, h, w, R, R, c_out
