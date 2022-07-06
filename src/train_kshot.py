@@ -152,7 +152,7 @@ def main(args: argparse.Namespace) -> None:
                 _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                 att_fq.append(att_out)       # [ 1, 512, h, w]
             att_fq = torch.cat(att_fq, dim=0)
-            att_fq = att_fq.mean(dim=0, keep_dim=True)
+            att_fq = att_fq.mean(dim=0, keepdim=True)
             fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
             pd_q1 = model.classifier(att_fq)
@@ -296,7 +296,7 @@ def validate_epoch(args, val_loader, model, Net):
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
             att_fq = torch.cat(att_fq, dim=0)
-            att_fq = att_fq.mean(dim=0, keep_dim=True)
+            att_fq = att_fq.mean(dim=0, keepdim=True)
             fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
 
             pd_q1 = model.classifier(att_fq)
