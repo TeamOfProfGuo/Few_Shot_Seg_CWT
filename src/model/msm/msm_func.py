@@ -48,7 +48,7 @@ class MSBlock(nn.Module):
 
 
 class WeightAverage(nn.Module):
-    def __init__(self, c_in, R=3):
+    def __init__(self, c_in, args, R=3):
         super(WeightAverage, self).__init__()
         c_out = c_in // 2
 
@@ -60,6 +60,7 @@ class WeightAverage(nn.Module):
 
         self.R = R
         self.c_out = c_out
+        self.proj_drop = nn.Dropout(args.get('proj_drop', 0.0))
 
     def forward(self, x):
         """
@@ -94,6 +95,8 @@ class WeightAverage(nn.Module):
         weight_average = weighted_average.permute(0, 3, 1, 2).contiguous()  # BS, c_out, h, w
 
         x_res = self.conv_back(weight_average)
+        x_res = self.proj_drop(x_res)
+
         ret = x + x_res
 
         return ret

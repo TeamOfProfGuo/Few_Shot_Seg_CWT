@@ -57,7 +57,7 @@ MODEL:
 
   temp: 20.0
   att_wt: 0.2
-  aux: 0.2     #  False or input weight of aux loss
+  aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   agg: cat
@@ -66,6 +66,7 @@ MODEL:
 
   red_dim: False  # False or 512
   wa: True        # True or False
+  proj_drop: 0.5
 
 Classifier:
   dist: dot
@@ -85,4 +86,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_l34_wa_lr001_aux2
+  exp_name: dotr_l34_wa_pdrop5
