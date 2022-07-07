@@ -73,14 +73,14 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
                 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             pre_weight = torch.load(fname)['state_dict']
-            pre_dict = model.state_dict()
+            model_dict = model.state_dict()
 
-            for index, key in enumerate(pre_dict.keys()):
+            for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    if pre_dict[key].shape == pre_weight[key].shape:
-                        pre_dict[key] = pre_weight[key]
+                    if model_dict[key].shape == pre_weight['module.' + key].shape:
+                        model_dict[key] = pre_weight['module.' + key]
 
-            model.load_state_dict(pre_dict, strict=True)
+            model.load_state_dict(model_dict, strict=True)
             if main_process(args):
                 log("=> loaded weight '{}'".format(fname))
         else:
