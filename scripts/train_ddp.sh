@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=p
+#SBATCH --job-name=pas
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -8,8 +8,8 @@
 #SBATCH --time=24:00:00
 #SBATCH --mail-type=END
 #SBATCH --mail-user=lg154@nyu.edu
-#SBATCH --output=seg.out
-#SBATCH --gres=gpu # How much gpu need, n is the number
+#SBATCH --output=ddp.out
+#SBATCH --gres=gpu:2 # How much gpu need, n is the number
 
 module purge
 
