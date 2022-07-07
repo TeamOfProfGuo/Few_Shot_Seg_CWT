@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'mmn_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'msc_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -147,11 +147,17 @@ def main(args: argparse.Namespace) -> None:
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
+            sum_loss=0
             for k in range(args.shot):
                 single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
                 single_f_s = f_s[k:k + 1]
-                _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
-                att_fq.append(att_out)       # [ 1, 512, h, w]
+                _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                att_fq.append(att_fq_single)       # [ 1, 512, h, w]
+
+                pred_att = model.classifier(att_fq_single)
+                pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                sum_loss = sum_loss + criterion(pred_att, q_label.long())
+
             att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
             att_fq = att_fq.mean(dim=0, keepdim=True)
             fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
@@ -162,12 +168,17 @@ def main(args: argparse.Namespace) -> None:
             pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
-            q_loss  = criterion(pred_q, q_label.long())
+            q_loss = criterion(pred_q, q_label.long())
 
-            loss = q_loss1
-            if args.get('aux', False) != False:
+            if args.loss_shot == 'avg':
+                q_loss1 = criterion(pred_q1, q_label.long())
+            else:   # 'sum'
+                q_loss1 = sum_loss
+
+            if args.get('aux', False) == False:
+                loss = q_loss1
+            elif args.get('aux', False) != False:
                 loss = q_loss1 + args.aux * q_loss
 
             optimizer_meta.zero_grad()

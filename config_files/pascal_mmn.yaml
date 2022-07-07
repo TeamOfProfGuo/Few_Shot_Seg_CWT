@@ -60,6 +60,7 @@ MODEL:
   aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
+  loss_shot: avg
   agg: cat
   rmid: l34      # nr, l2, l4
   all_lr: l
@@ -74,7 +75,7 @@ Classifier:
   cls_type: rooo
 
 EVALUATION:
-  shot: 1
+  shot: 5
   random_shot: False
   episodic: True
   norm_feat: True
@@ -87,7 +88,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_drop
+  exp_name: dotr_wa_avg
 
 DISTRIBUTED:
   gpus: [0]
