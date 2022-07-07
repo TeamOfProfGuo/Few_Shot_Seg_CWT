@@ -48,6 +48,14 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
     setup(args, rank, world_size)
     print(f"==> Running process rank {rank}.")
 
+    sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
+        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+    if main_process(args):
+        ensure_path(sv_path)
+    set_log_path(path=sv_path)
+    log('save_path {}'.format(sv_path))
+    log(args)
+
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
         cudnn.deterministic = True
@@ -351,12 +359,5 @@ if __name__ == "__main__":
     distributed = world_size > 1
     args.distributed = distributed
     args.port = find_free_port()
-
-    sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
-    ensure_path(sv_path)
-    set_log_path(path=sv_path)
-    log('save_path {}'.format(sv_path))
-    log(args)
 
     mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
