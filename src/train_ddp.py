@@ -45,7 +45,7 @@ def main_process(args: argparse.Namespace) -> bool:
 
 
 def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
-
+    setup(args, rank, world_size)
     if main_process(args):
         sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
             args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
@@ -55,7 +55,6 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
         log(args)
 
     print(f"==> Running process rank {rank}.")
-    setup(args, rank, world_size)
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
