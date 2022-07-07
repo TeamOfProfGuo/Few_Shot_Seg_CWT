@@ -88,3 +88,6 @@ EVALUATION:
 
 EXPERIMENT:
   exp_name: dotr_l34
+
+DISTRIBUTED:
+  gpus: [0, 1]
