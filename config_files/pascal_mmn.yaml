@@ -90,4 +90,4 @@ EXPERIMENT:
   exp_name: dotr_wa_drop
 
 DISTRIBUTED:
-  gpus: [0, 1]
+  gpus: [0]

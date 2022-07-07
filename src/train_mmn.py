@@ -329,4 +329,7 @@ def validate_epoch(args, val_loader, model, Net):
 if __name__ == "__main__":
     args = parse_args()
 
+    world_size = len(args.gpus)
+    args.distributed = (world_size > 1)
+
     main(args)
