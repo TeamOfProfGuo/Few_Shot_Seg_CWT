@@ -46,14 +46,6 @@ def main_process(args: argparse.Namespace) -> bool:
 
 def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
     setup(args, rank, world_size)
-    if main_process(args):
-        sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
-            args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
-        ensure_path(sv_path)
-        set_log_path(path=sv_path)
-        log('save_path {}'.format(sv_path))
-        log(args)
-
     print(f"==> Running process rank {rank}.")
 
     if args.manual_seed is not None:
@@ -359,4 +351,12 @@ if __name__ == "__main__":
     distributed = world_size > 1
     args.distributed = distributed
     args.port = find_free_port()
+
+    sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
+        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+    ensure_path(sv_path)
+    set_log_path(path=sv_path)
+    log('save_path {}'.format(sv_path))
+    log(args)
+
     mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)

@@ -147,26 +147,22 @@ def main(args: argparse.Namespace) -> None:
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
-            q_loss1 = 0
             for k in range(args.shot):
                 single_fs_lst = {k: [ve[k:k + 1] for ve in v] for k, v in fs_lst.items()}
                 single_f_s = f_s[k:k + 1]
                 _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                 att_fq.append(att_out)       # [ 1, 512, h, w]
-                pred_att = model.classifier(att_out)
-                pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-                q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
             att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
             att_fq = att_fq.mean(dim=0, keepdim=True)
             fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
-            pd_q1 = model.classifier(att_fq)
-            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-            pd_q = model.classifier(fq)
-            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pred_q1 = model.classifier(att_fq)
+            pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pred_q = model.classifier(fq)
+            pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            # q_loss1 = criterion(pred_q1, q_label.long())
+            q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
             q_loss  = criterion(pred_q, q_label.long())
 
