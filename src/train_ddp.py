@@ -17,7 +17,7 @@ from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log, setup
+from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log, setup, find_free_port
 import argparse
 
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -37,9 +37,16 @@ def parse_args() -> argparse.Namespace:
     return cfg
 
 
-def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
+def main_process(args: argparse.Namespace) -> bool:
+    if args.distributed:
+        return dist.get_rank() == 0
+    else:
+        return True
 
-    sv_path = 'mmn_{}/{}{}/split{}_shot{}/{}'.format(
+
+def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
+
+    sv_path = 'ddp_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -53,11 +60,11 @@ def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
         cudnn.deterministic = True
-        random.seed(args.manual_seed)
-        np.random.seed(args.manual_seed)
-        torch.manual_seed(args.manual_seed)
-        torch.cuda.manual_seed(args.manual_seed)
-        torch.cuda.manual_seed_all(args.manual_seed)
+        random.seed(args.manual_seed + rank)
+        np.random.seed(args.manual_seed + rank)
+        torch.manual_seed(args.manual_seed + rank)
+        torch.cuda.manual_seed(args.manual_seed + rank)
+        torch.cuda.manual_seed_all(args.manual_seed + rank)
 
     # ====== Model + Optimizer ======
     model = get_model(args).to(rank)
@@ -106,9 +113,12 @@ def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
-    Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).cuda()
+    Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).to(rank)
     optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
+
+    Trans = nn.SyncBatchNorm.convert_sync_batchnorm(Trans)
+    Trans = DDP(Trans, device_ids=[rank])
 
     # ====== Metrics initialization ======
     max_val_mIoU, max_val_mIoU1 = 0., 0.
@@ -123,15 +133,16 @@ def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
         train_iou_meter0 = AverageMeter()
         train_iou_compare = CompareMeter()
 
+        if args.distributed:
+            train_sampler.set_epoch(epoch)
         iterable_train_loader = iter(train_loader)
         for i in range(1, len(train_loader)+1):
             qry_img, q_label, spt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
 
-            if torch.cuda.is_available():
-                spt_imgs = spt_imgs.cuda()  # [1, 1, 3, h, w]
-                s_label = s_label.cuda()  # [1, 1, h, w]
-                q_label = q_label.cuda()  # [1, h, w]
-                qry_img = qry_img.cuda()  # [1, 3, h, w]
+            spt_imgs = spt_imgs.to(dist.get_rank(), non_blocking=True)  # [1, 1, 3, h, w]
+            s_label = s_label.to(dist.get_rank(), non_blocking=True)  # [1, 1, h, w]
+            q_label = q_label.to(dist.get_rank(), non_blocking=True)  # [1, h, w]
+            qry_img = qry_img.to(dist.get_rank(), non_blocking=True)  # [1, 3, h, w]
 
             # ====== Phase 1: Train the binary classifier on support samples ======
 
@@ -152,20 +163,23 @@ def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             Trans.train()
-            for k, v_lst in fq_lst.items():
-                for i, v in enumerate(v_lst):
-                    fq_lst[k][i] = v.expand(args.shot, -1, -1, -1)
+            criterion = SegLoss(loss_type=args.loss_type)
+            att_fq = []
+            for k in range(args.shot):
+                single_fs_lst = {k: [ve[k:k + 1] for ve in v] for k, v in fs_lst.items()}
+                single_f_s = f_s[k:k + 1]
+                _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s, )
+                att_fq.append(att_out)  # [ 1, 512, h, w]
+            att_fq = torch.cat(att_fq, dim=0)
+            att_fq = att_fq.mean(dim=0, keepdim=True)
+            fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
 
-
-            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s, k)
-            pd_q1 = model.classifier(att_fq)
-            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
+            pred_q1 = model.classifier(att_fq)
+            pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
             pd_q = model.classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            criterion = SegLoss(loss_type=args.loss_type)
             q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
             q_loss  = criterion(pred_q, q_label.long())
@@ -209,35 +223,28 @@ def main(args: argparse.Namespace, rank:int, world_size:int) -> None:
                 val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
 
                 # Model selection
-                if val_Iou.item() > max_val_mIoU:
-                    max_val_mIoU = val_Iou.item()
-                    log('----------- Max_mIoU = {:.3f}-----------'.format(max_val_mIoU))
-                    filename_transformer = os.path.join(sv_path, f'best.pth')
-                    if args.save_models:
-                        log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
-                        torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
-                                    'optimizer': optimizer_meta.state_dict()}, filename_transformer)
-                if val_Iou1.item() > max_val_mIoU1:
-                    max_val_mIoU1 = val_Iou1.item()
-                    log('----------- Max_mIoU1 = {:.3f}-----------'.format(max_val_mIoU1))
-                    filename_transformer = os.path.join(sv_path, f'best1.pth')
-                    if args.save_models:
-                        log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))
-                        torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
-                                    'optimizer': optimizer_meta.state_dict()}, filename_transformer)
+                if main_process(args):
+                    if val_Iou.item() > max_val_mIoU:
+                        max_val_mIoU = val_Iou.item()
+                        log('----------- Max_mIoU = {:.3f}-----------'.format(max_val_mIoU))
+                        filename_transformer = os.path.join(sv_path, f'best.pth')
+                        if args.save_models:
+                            log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
+                            torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
+                                        'optimizer': optimizer_meta.state_dict()}, filename_transformer)
+                    if val_Iou1.item() > max_val_mIoU1:
+                        max_val_mIoU1 = val_Iou1.item()
+                        log('----------- Max_mIoU1 = {:.3f}-----------'.format(max_val_mIoU1))
+                        filename_transformer = os.path.join(sv_path, f'best1.pth')
+                        if args.save_models:
+                            log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))
+                            torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
+                                        'optimizer': optimizer_meta.state_dict()}, filename_transformer)
 
         log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, loss0 {:.2f}, loss1 {:.2f}===========\n'.format(
             epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_loss_meter0.avg, train_loss_meter1.avg))
         train_iou_meter1.reset()
         train_loss_meter1.reset()
-
-    if args.save_models:  # 所有跑完，存last epoch
-        filename_transformer = os.path.join(sv_path, 'final.pth')
-        torch.save(
-            {'epoch': args.epochs,
-             'state_dict': model.state_dict(),
-             'optimizer': optimizer_meta.state_dict()},
-            filename_transformer)
 
 
 def validate_epoch(args, val_loader, model, Net):
@@ -289,15 +296,22 @@ def validate_epoch(args, val_loader, model, Net):
         with torch.no_grad():
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
             pd_q0 = model.classifier(f_q)
-            pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
         with torch.no_grad():
-            fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
+            att_fq = []
+            for k in range(args.shot):
+                single_fs_lst = {k: [ve[k:k + 1] for ve in v] for k, v in fs_lst.items()}
+                single_f_s = f_s[k:k + 1]
+                _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
+                att_fq.append(att_out)  # [ 1, 512, h, w]
+            att_fq = torch.cat(att_fq, dim=0)
+            att_fq = att_fq.mean(dim=0, keepdim=True)
+            fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
+
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
             pd_q = model.classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
@@ -340,5 +354,10 @@ def validate_epoch(args, val_loader, model, Net):
 
 if __name__ == "__main__":
     args = parse_args()
+    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(str(x) for x in args.gpus)
 
-    main(args)
+    world_size = len(args.gpus)
+    distributed = world_size > 1
+    args.distributed = distributed
+    args.port = find_free_port()
+    mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
