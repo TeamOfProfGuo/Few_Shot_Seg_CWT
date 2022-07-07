@@ -46,13 +46,13 @@ def main_process(args: argparse.Namespace) -> bool:
 
 def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
 
-    sv_path = 'ddp_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
-    sv_path = os.path.join('./results', sv_path)
-    ensure_path(sv_path)
-    set_log_path(path=sv_path)
-    log('save_path {}'.format(sv_path))
-    log(args)
+    if main_process():
+        sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
+            args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+        ensure_path(sv_path)
+        set_log_path(path=sv_path)
+        log('save_path {}'.format(sv_path))
+        log(args)
 
     print(f"==> Running process rank {rank}.")
     setup(args, rank, world_size)
