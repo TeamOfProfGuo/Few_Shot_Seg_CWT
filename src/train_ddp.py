@@ -46,7 +46,7 @@ def main_process(args: argparse.Namespace) -> bool:
 
 def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
 
-    if main_process():
+    if main_process(args):
         sv_path = './results/ddp_{}/{}{}/split{}_shot{}/{}'.format(
             args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
         ensure_path(sv_path)
