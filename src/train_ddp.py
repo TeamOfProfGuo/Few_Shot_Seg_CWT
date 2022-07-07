@@ -52,9 +52,9 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     if main_process(args):
         ensure_path(sv_path)
-    set_log_path(path=sv_path)
-    log('save_path {}'.format(sv_path))
-    log(args)
+        set_log_path(path=sv_path)
+        log('save_path {}'.format(sv_path))
+        log(args)
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -72,7 +72,6 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
         fname = args.resume_weights + args.train_name + '/' + \
                 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
-            log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
             pre_dict = model.state_dict()
 
@@ -80,13 +79,13 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
                 if 'classifier' not in key and 'gamma' not in key:
                     if pre_dict[key].shape == pre_weight[key].shape:
                         pre_dict[key] = pre_weight[key]
-                    else:
-                        log('weight shape not match {}: {}/{}'.format(key, pre_weight[key].shape, pre_dict[key].shape))
 
             model.load_state_dict(pre_dict, strict=True)
-            log("=> loaded weight '{}'".format(fname))
+            if main_process(args):
+                log("=> loaded weight '{}'".format(fname))
         else:
-            log("=> no weight found at '{}'".format(fname))
+            if main_process(args):
+                log("=> no weight found at '{}'".format(fname))
 
         # Fix the backbone layers
         for param in model.layer0.parameters():
@@ -123,7 +122,8 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
     max_val_mIoU, max_val_mIoU1 = 0., 0.
 
     # ====== Training  ======
-    log('==> Start training')
+    if main_process(args):
+        log('==> Start training')
     for epoch in range(1, args.epochs+1):
 
         train_loss_meter1 = AverageMeter()
@@ -193,7 +193,7 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
             if args.scheduler == 'cosine':
                 scheduler.step()
 
-            if epoch == 1 and i==1:
+            if epoch == 1 and i==1 and main_process():
                 log(Trans)
             # Print loss and mIoU
             IoUb, IoUf = dict(), dict()
@@ -207,7 +207,7 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
             train_iou_compare.update(IoUf[1], IoUf[0])
 
-            if i%100==0 or (epoch==1 and i <= 1000 and i%20==0):
+            if (i%100==0 or (epoch==1 and i <= 1000 and i%20==0)) and main_process(args):
                 msg = 'Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} ' \
                       'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
@@ -215,10 +215,14 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
+                log('---- processed samples {} ----'.format(train_loss_meter0.count))
+
             if i% args.log_iter==0:
-                log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
-                    train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
+                if main_process(args):
+                    log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
+                        train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
+
                 val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
 
                 # Model selection
@@ -229,25 +233,26 @@ def main(rank:int, world_size:int, args: argparse.Namespace) -> None:
                         filename_transformer = os.path.join(sv_path, f'best.pth')
                         if args.save_models:
                             log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
-                            torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
-                                        'optimizer': optimizer_meta.state_dict()}, filename_transformer)
+                            torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(), 'optimizer': optimizer_meta.state_dict()}, filename_transformer)
+
                     if val_Iou1.item() > max_val_mIoU1:
                         max_val_mIoU1 = val_Iou1.item()
                         log('----------- Max_mIoU1 = {:.3f}-----------'.format(max_val_mIoU1))
                         filename_transformer = os.path.join(sv_path, f'best1.pth')
                         if args.save_models:
                             log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))
-                            torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(),
-                                        'optimizer': optimizer_meta.state_dict()}, filename_transformer)
+                            torch.save({'epoch': epoch, 'state_dict': Trans.state_dict(), 'optimizer': optimizer_meta.state_dict()}, filename_transformer)
 
-        log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, loss0 {:.2f}, loss1 {:.2f}===========\n'.format(
-            epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_loss_meter0.avg, train_loss_meter1.avg))
+        if main_process(args):
+            log('===========Epoch {}===========: The mIoU0 {:.2f}, mIoU1 {:.2f}, loss0 {:.2f}, loss1 {:.2f}===========\n'.format(
+                epoch, train_iou_meter0.avg, train_iou_meter1.avg, train_loss_meter0.avg, train_loss_meter1.avg))
         train_iou_meter1.reset()
         train_loss_meter1.reset()
 
 
 def validate_epoch(args, val_loader, model, Net):
-    log('==> Start testing')
+    if main_process(args):
+        log('==> Start testing')
 
     iter_num = 0
     start_time = time.time()
@@ -332,21 +337,20 @@ def validate_epoch(args, val_loader, model, Net):
         loss1 = criterion_standard(pred_q1, q_label)
         loss_meter.update(loss1.item())
 
-        if (iter_num % 200 == 0):
-            mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
+        if (iter_num % 200 == 0) and main_process(args):
+            mIoU = np.mean([IoU[i] for i in IoU])                          # IoU dict {cls: iou}
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
             log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
                 iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
 
-    runtime = time.time() - start_time
-    mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
-        mIoU0, mIoU1, mIoU, runtime/60))
-    for class_ in cls_union:
-        log("Class {} : {:.4f}".format(class_, IoU[class_]))
-    log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
-        val_iou_compare.win_cnt, val_iou_compare.cnt, val_iou_compare.diff_avg))
+    if main_process(args):
+        runtime = time.time() - start_time
+        mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
+        log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format( mIoU0, mIoU1, mIoU, runtime/60))
+        for class_ in cls_union:
+            log("Class {} : {:.4f}".format(class_, IoU[class_]))
+        log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(val_iou_compare.win_cnt, val_iou_compare.cnt, val_iou_compare.diff_avg))
 
     return mIoU, mIoU1, loss_meter.avg
 
