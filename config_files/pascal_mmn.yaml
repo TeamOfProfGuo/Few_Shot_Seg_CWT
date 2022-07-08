@@ -41,6 +41,8 @@ TRAIN:
   log_iter: 1190
   adapt_iter: 200
 
+  use_amp: True
+
 MODEL:
   arch: resnet
   pretrained: False  # Means the backbone has been pre-trained

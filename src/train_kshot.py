@@ -9,6 +9,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+from torch.cuda.amp import autocast as autocast
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
@@ -144,47 +145,51 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+            use_amp=args.use_amp
+            scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
             sum_loss=0
-            for k in range(args.shot):
-                single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
-                single_f_s = f_s[k:k + 1]
-                _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
-                att_fq.append(att_fq_single)       # [ 1, 512, h, w]
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                for k in range(args.shot):
+                    single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
+                    single_f_s = f_s[k:k + 1]
+                    _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                    att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
-                if args.loss_shot=='sum':
-                    pred_att = model.classifier(att_fq_single)
-                    pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-                    sum_loss = sum_loss + criterion(pred_att, q_label.long())
+                    if args.loss_shot=='sum':
+                        pred_att = model.classifier(att_fq_single)
+                        pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                        sum_loss = sum_loss + criterion(pred_att, q_label.long())
 
-            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-            att_fq = att_fq.mean(dim=0, keepdim=True)
-            fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = att_fq.mean(dim=0, keepdim=True)
+                fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
-            pred_q1 = model.classifier(att_fq)
-            pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-            pred_q = model.classifier(fq)
-            pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                pred_q1 = model.classifier(att_fq)
+                pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                pred_q = model.classifier(fq)
+                pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-            # Loss function: Dynamic class weights used for query image only during training
-            q_loss0 = criterion(pred_q0, q_label.long())
-            q_loss = criterion(pred_q, q_label.long())
+                # Loss function: Dynamic class weights used for query image only during training
+                q_loss0 = criterion(pred_q0, q_label.long())
+                q_loss = criterion(pred_q, q_label.long())
 
-            if args.loss_shot == 'avg':
-                q_loss1 = criterion(pred_q1, q_label.long())
-            else:   # 'sum'
-                q_loss1 = sum_loss
+                if args.loss_shot == 'avg':
+                    q_loss1 = criterion(pred_q1, q_label.long())
+                else:   # 'sum'
+                    q_loss1 = sum_loss
 
-            if args.get('aux', False) == False:
-                loss = q_loss1
-            elif args.get('aux', False) != False:
-                loss = q_loss1 + args.aux * q_loss
+                if args.get('aux', False) == False:
+                    loss = q_loss1
+                elif args.get('aux', False) != False:
+                    loss = q_loss1 + args.aux * q_loss
 
-            optimizer_meta.zero_grad()
-            loss.backward()
-            optimizer_meta.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer_meta)
+            scaler.update()
+            optimizer_meta.zero_grad(set_to_none=True)
             if args.scheduler == 'cosine':
                 scheduler.step()
 
