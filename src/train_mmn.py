@@ -1,6 +1,6 @@
 # encoding:utf-8
 import pdb
-
+import gc
 import os
 import time
 import random
@@ -165,6 +165,10 @@ def main(args: argparse.Namespace) -> None:
                     loss = q_loss1
                 elif args.get('aux', False) != False:
                     loss = q_loss1 + args.aux * q_loss
+
+            del fq_lst, fs_lst, f_q, f_s, qry_img, q_label, spt_imgs, s_label
+            gc.collect()
+            torch.cuda.empty_cache()
 
             scaler.scale(loss).backward()
             scaler.step(optimizer_meta)
