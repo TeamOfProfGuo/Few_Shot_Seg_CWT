@@ -303,7 +303,7 @@ def validate_epoch(args, val_loader, model, Net):
         with torch.no_grad():
             att_fq = []
             for k in range(args.shot):
-                single_fs_lst = {k: [ve[k:k + 1] for ve in v] for k, v in fs_lst.items()}
+                single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
                 single_f_s = f_s[k:k + 1]
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
