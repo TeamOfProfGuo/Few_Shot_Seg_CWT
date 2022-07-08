@@ -141,30 +141,35 @@ def main(args: argparse.Namespace) -> None:
             model.eval()
             with torch.no_grad():
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-                pd_q0 = model.classifier(f_q)
-                pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+                pred_q0 = model.classifier(f_q)
+                pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             Trans.train()
-            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)
-            pd_q1 = model.classifier(att_fq)
-            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            use_amp = args.use_amp
+            scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)  # f_q: single, f_s: k-shot
+                pred_q1 = model.classifier(att_fq)
+                pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-            pd_q = model.classifier(fq)
-            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                pred_q = model.classifier(fq)
+                pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-            # Loss function: Dynamic class weights used for query image only during training
-            criterion = SegLoss(loss_type=args.loss_type)
-            q_loss1 = criterion(pred_q1, q_label.long())
-            q_loss0 = criterion(pred_q0, q_label.long())
-            q_loss  = criterion(pred_q, q_label.long())
+                # Loss function: Dynamic class weights used for query image only during training
+                criterion = SegLoss(loss_type=args.loss_type)
+                q_loss1 = criterion(pred_q1, q_label.long())
+                q_loss0 = criterion(pred_q0, q_label.long())
+                q_loss  = criterion(pred_q, q_label.long())
 
-            loss = q_loss1
-            if args.get('aux', False) != False:
-                loss = q_loss1 + args.aux * q_loss
+                if args.get('aux', False) == False:
+                    loss = q_loss1
+                elif args.get('aux', False) != False:
+                    loss = q_loss1 + args.aux * q_loss
 
-            optimizer_meta.zero_grad()
-            loss.backward()
-            optimizer_meta.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer_meta)
+            scaler.update()
+            optimizer_meta.zero_grad(set_to_none=True)
             if args.scheduler == 'cosine':
                 scheduler.step()
 
@@ -276,18 +281,17 @@ def validate_epoch(args, val_loader, model, Net):
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-            pd_q0 = model.classifier(f_q)
-            pd_s  = model.classifier(f_s)
-            pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+            pred_q0 = model.classifier(f_q)
+            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
         with torch.no_grad():
             fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
-            pd_q1 = model.classifier(att_fq)
-            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pred_q1 = model.classifier(att_fq)
+            pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-            pd_q = model.classifier(fq)
-            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pred_q = model.classifier(fq)
+            pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls

@@ -84,7 +84,7 @@ class WeightAverage(nn.Module):
         theta = theta.permute(0, 2, 3, 1).contiguous().view(batch_size, h, w, self.c_out)   # BS, h, w, c   # Q
         theta_dim = theta                                                                                   # Q
 
-        cos_sim = self.CosSimLayer(phi, theta_dim[:, :, :, :, None, None])  # BS, h, w, R, R
+        cos_sim = self.CosSimLayer(phi, theta_dim[:, :, :, :, None, None])  # BS, h, w, c, R, R
 
         softmax_sim = F.softmax(cos_sim.contiguous().view(batch_size, h, w, -1), dim=3).contiguous().view_as(cos_sim)  # BS, h, w, R, R
         softmax_sim = self.att_drop(softmax_sim)

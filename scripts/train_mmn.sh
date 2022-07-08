@@ -27,11 +27,11 @@ singularity exec --nv \
             --overlay /scratch/lg154/sseg/dataset/coco2014.sqf:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_kshot --config config_files/${DATA}_mmn.yaml \
+            python -m src.train_mmn --config config_files/${DATA}_mmn.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log_5shot.txt 2>&1"
+					 > log_5shot_new.txt 2>&1"
 
 echo "finish"
 

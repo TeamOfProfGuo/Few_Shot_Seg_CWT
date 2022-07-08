@@ -9,7 +9,6 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-from torch.cuda.amp import autocast as autocast
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict

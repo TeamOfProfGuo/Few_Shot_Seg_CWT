@@ -41,25 +41,25 @@ class MMN(nn.Module):
         corr_lst = []
         for idx in self.bid_lst[::-1]:
             for lr in range(len(fq_lst[idx])):
-                fq_fea = fq_lst[idx][lr]
-                fs_fea = fs_lst[idx][lr]
+                fq_fea = fq_lst[idx][lr].expand(B, -1, -1, -1)   # [B, ch, h, w]
+                fs_fea = fs_lst[idx][lr]                         # [B, ch, h, w]
                 if self.red_dim:
                     fq_fea = getattr(self, 'rd_'+str(idx))(fq_fea)
                     fs_fea = getattr(self, 'rd_'+str(idx))(fs_fea)
                 if self.wa:
                     fq_fea = getattr(self, "wa_"+str(idx))(fq_fea)
                     fs_fea = getattr(self, 'wa_'+str(idx))(fs_fea)
-                # fq_fea = F.normalize(fq_fea, dim=1)   already done in get_corr
-                # fs_fea = F.normalize(fs_fea, dim=1)
-                corr = get_corr(fq_fea, fs_fea)
-                corr4d = corr.view(B, -1, h, w, h, w)
-                corr_lst.append(corr4d)
+
+                corr = get_corr(fq_fea, fs_fea)      # [B, N_q, N_s]  fq_fea, fs_fea normalized before calculate corr
+                corr = corr.view(B, -1, h, w, h, w)
+                corr_lst.append(corr)
 
         corr4d = torch.cat(corr_lst, dim=1)   # [B, L, h, w, h, w]
         if self.agg == 'sum':
             corr4d = torch.sum(corr4d, dim=1, keepdim=True)  # [B, 1, h, w, h, w]
 
-        att_fq = self.corr_net.corr_forward(corr4d, v=f_s)
+        att_fq = self.corr_net.corr_forward(corr4d, v=f_s)   # [shot, 512, h, w]
+        att_fq = att_fq.mean(dim=0, keepdim=True)
         fq = f_q * (1-self.args.att_wt) + att_fq * self.args.att_wt
 
         return fq, att_fq

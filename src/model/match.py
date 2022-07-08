@@ -152,7 +152,7 @@ class MatchNet(nn.Module):
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
         weighted_v = weighted_v.view(B, -1, h, w)
 
-        return weighted_v
+        return weighted_v  # [B, 512, h, w]
 
     def run_match_model(self,corr4d):
         corr4d = MutualMatching(corr4d)
