@@ -141,8 +141,8 @@ def main(args: argparse.Namespace) -> None:
             model.eval()
             with torch.no_grad():
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-                pd_q0 = model.classifier(f_q)
-                pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+                pred_q0 = model.classifier(f_q)
+                pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
@@ -296,8 +296,8 @@ def validate_epoch(args, val_loader, model, Net):
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-            pd_q0 = model.classifier(f_q)
-            pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+            pred_q0 = model.classifier(f_q)
+            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
         with torch.no_grad():

@@ -30,7 +30,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log.txt 2>&1"
+					 > log_5shot.txt 2>&1"
 
 echo "finish"
 
