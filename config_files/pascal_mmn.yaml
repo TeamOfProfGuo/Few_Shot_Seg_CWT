@@ -9,7 +9,7 @@ DATA:
   num_classes_tr: 2  # Counting background for training
   num_classes_val: 5
   use_split_coco: False
-  workers: 2
+  workers: 0
   image_size: 473
   padding_label: 255
   mean: [0.485, 0.456, 0.406]
