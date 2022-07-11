@@ -68,7 +68,7 @@ MODEL:
   all_lr: l
 
   red_dim: False  # False or 512
-  wa: True        # True or False
+  wa: False       # True or False
   proj_drop: 0.5
   att_drop: 0.5
 
@@ -90,7 +90,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_aux1
+  exp_name: dotr_aux1
 
 DISTRIBUTED:
   gpus: [0]
