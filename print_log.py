@@ -32,8 +32,8 @@ while line:
             dt['iou0'].update(mIoU0)
             dt['iou1'].update(mIoU1)
             dt['iou'].update(mIoU)
-        if mIoU>max_iou[-1]:
-            max_iou = (mIoU0, mIoU1, mIoU)
+            if mIoU>max_iou[-1]:
+                max_iou = (mIoU0, mIoU1, mIoU)
 
     line = f.readline()
 
