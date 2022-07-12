@@ -1,0 +1,43 @@
+
+import os
+import argparse
+from collections import defaultdict
+from src.util import AverageMeter
+
+
+parser = argparse.ArgumentParser(description='Summarize log')
+parser.add_argument('--fpath', type=str, required=True, help='path of log file')
+parser.add_argument('--start', type=int, default=0, help='where to start summarizing')
+parser.add_argument('--end', type=int, default=-1, help='where to end summarizing')
+args = parser.parse_args()
+
+fpath = './results/' + args.fpath + '/log.txt'
+assert os.path.exists(fpath), 'can not find the file'
+
+start = args.start ==0
+dt = defaultdict(AverageMeter)
+max_iou = (0.0, 0.0, 0.0)
+
+f = open(fpath, 'r')
+line = f.readline()
+while line:
+    if f"===========Epoch {args.start}===========" in line:
+        start = True
+    if args.end > 1 and f"===========Epoch {args.end}===========" in line:
+        break
+    if ("mIoU---Val result" in line) and start:
+        print(line)
+        mIoU0, mIoU1, mIoU = float(line[25:31]), float(line[39:45]), float(line[51:57])
+        dt['iou0'].update(mIoU0)
+        dt['iou1'].update(mIoU1)
+        dt['iou'].update(mIoU)
+
+        if mIoU>max_iou[-1]:
+            max_iou = (mIoU0, mIoU1, mIoU)
+
+    line = f.readline()
+
+f.close()
+
+print(f"avg mIOU0: {dt['iou0'].avg:.4f}, mIOU1: {dt['iou1'].avg:.4f}, mIOU: {dt['iou'].avg:.4f}\n")
+print('max iou ' + str(max_iou))
