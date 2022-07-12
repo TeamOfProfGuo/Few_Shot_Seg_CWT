@@ -14,24 +14,24 @@ args = parser.parse_args()
 fpath = './results/' + args.fpath + '/log.txt'
 assert os.path.exists(fpath), 'can not find the file'
 
-start = args.start ==0
+eval_cnt =0
 dt = defaultdict(AverageMeter)
 max_iou = (0.0, 0.0, 0.0)
 
 f = open(fpath, 'r')
 line = f.readline()
 while line:
-    if f"===========Epoch {args.start}===========" in line:
-        start = True
     if args.end > 1 and f"===========Epoch {args.end}===========" in line:
         break
-    if ("mIoU---Val result" in line) and start:
-        print(line)
-        mIoU0, mIoU1, mIoU = float(line[25:31]), float(line[39:45]), float(line[51:57])
-        dt['iou0'].update(mIoU0)
-        dt['iou1'].update(mIoU1)
-        dt['iou'].update(mIoU)
 
+    if "mIoU---Val result" in line:
+        eval_cnt += 1
+        if eval_cnt >= args.start:
+            print(line)
+            mIoU0, mIoU1, mIoU = float(line[25:31]), float(line[39:45]), float(line[51:57])
+            dt['iou0'].update(mIoU0)
+            dt['iou1'].update(mIoU1)
+            dt['iou'].update(mIoU)
         if mIoU>max_iou[-1]:
             max_iou = (mIoU0, mIoU1, mIoU)
 
