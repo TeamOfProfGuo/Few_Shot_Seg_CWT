@@ -59,7 +59,7 @@ MODEL:
 
   temp: 20.0
   att_wt: 0.2
-  aux: False    #  False or input weight of aux loss
+  aux: 0.5    #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   loss_shot: avg
@@ -68,7 +68,7 @@ MODEL:
   all_lr: l
 
   red_dim: False  # False or 512
-  wa: False        # True or False
+  wa: True       # True or False
   proj_drop: 0.5
   att_drop: 0.5
 
@@ -90,7 +90,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr
+  exp_name: dotr_wa_aux5
 
 DISTRIBUTED:
   gpus: [0]
