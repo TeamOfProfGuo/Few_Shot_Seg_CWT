@@ -25,7 +25,7 @@ TRAIN:
   batch_size: 1
   epochs: 8
   log_freq : 50
-  save_models: True
+  save_models: False
   cls_lr: 0.1
   trans_lr: 0.0015
   scale_lr: 1.0
@@ -59,7 +59,7 @@ MODEL:
 
   temp: 20.0
   att_wt: 0.2
-  aux: False   #  False or input weight of aux loss
+  aux: 1.0   #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   loss_shot: avg
@@ -90,7 +90,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa
+  exp_name: dotr_wa_aux1
 
 DISTRIBUTED:
   gpus: [0]
