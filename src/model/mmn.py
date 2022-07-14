@@ -20,6 +20,10 @@ class MMN(nn.Module):
         if self.args.layers == 50:
             self.nbottlenecks = [3, 4, 6, 3]
             self.feature_channels = [256, 512, 1024, 2048]
+        elif self.args.layers == 101:
+            self.nbottlenecks = [3, 4, 23, 3]
+            self.feature_channels = [256, 512, 1024, 2048]
+
         if self.wa or (self.red_dim != False):
             for bid in self.bid_lst:
                 c_in = self.feature_channels[bid-1]
