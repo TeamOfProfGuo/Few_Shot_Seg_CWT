@@ -253,4 +253,6 @@ def standard_validate(args, val_loader, model, use_callback):
 if __name__ == "__main__":
     args = parse_args()
 
+    world_size = len(args.gpus)
+    args.distributed = (world_size > 1)
     main(args)
