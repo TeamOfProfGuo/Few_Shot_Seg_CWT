@@ -221,8 +221,6 @@ def compute_loss(args, model, images, targets, num_classes):
 
 def standard_validate(args, val_loader, model, use_callback):
 
-    pdb.set_trace()
-
     loss_meter = AverageMeter()
     intersections = torch.zeros(args.num_classes_tr).cuda()
     unions = torch.zeros(args.num_classes_tr).cuda()
