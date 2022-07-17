@@ -40,5 +40,5 @@ while line:
 
 f.close()
 
-print(f"avg mIOU0: {dt['iou0'].avg:.4f}, mIOU1: {dt['iou1'].avg:.4f}, mIOU: {dt['iou'].avg:.4f}\n")
+print(f"avg mIOU0: {dt['iou0'].avg:.4f}, mIOU1: {dt['iou1'].avg:.4f}, mIOU: {dt['iou'].avg:.4f}, runs: {dt['iou0'].count}\n")
 print('max iou ' + str(max_iou))
