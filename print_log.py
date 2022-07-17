@@ -21,8 +21,6 @@ max_iou = (0.0, 0.0, 0.0)
 f = open(fpath, 'r')
 line = f.readline()
 while line:
-    if args.end >= 1 and f"===========Epoch {args.end}===========" in line:
-        break
 
     if "mIoU---Val result" in line:
         eval_cnt += 1
@@ -34,6 +32,9 @@ while line:
             dt['iou'].update(mIoU)
             if mIoU>max_iou[-1]:
                 max_iou = (mIoU0, mIoU1, mIoU)
+
+    if args.end >= 1 and eval_cnt>=args.end:
+        break
 
     line = f.readline()
 
