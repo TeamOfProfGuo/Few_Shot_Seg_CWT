@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'pretrain_{}/{}{}/shot{}_split{}/{}'.format(
+    sv_path = 'pretrain_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
