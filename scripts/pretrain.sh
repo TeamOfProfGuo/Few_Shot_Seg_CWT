@@ -8,8 +8,9 @@
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=END
 #SBATCH --mail-user=lg154@nyu.edu
-#SBATCH --output=seg.out
+#SBATCH --output=pretrain.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
+#SBATCH --partition=v100,a100
 
 module purge
 
