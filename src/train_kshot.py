@@ -62,18 +62,18 @@ def main(args: argparse.Namespace) -> None:
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
-            pre_dict = model.state_dict()
+            model_dict = model.state_dict()
 
-            for index, key in enumerate(pre_dict.keys()):
+            for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    if pre_dict[key].shape == pre_weight['module.' + key].shape:
-                        pre_dict[key] = pre_weight['module.' + key]
+                    map_key = key if (args.train_name=='coco' and args.layers==101) else 'module.' + key
+                    if model_dict[key].shape == pre_weight[map_key].shape:
+                        model_dict[key] = pre_weight[map_key]
                     else:
-                        log('Pre-trained shape and model shape for {}: {}, {}'.format(
-                            key, pre_weight['module.' + key].shape, pre_dict[key].shape))
+                        log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
                         continue
 
-            model.load_state_dict(pre_dict, strict=True)
+            model.load_state_dict(model_dict, strict=True)
             log("=> loaded weight '{}'".format(fname))
         else:
             log("=> no weight found at '{}'".format(fname))
