@@ -74,7 +74,7 @@ MODEL:
 
 Classifier:
   dist: dot
-  cls_type: rooo
+  cls_type: oooo
 
 EVALUATION:
   shot: 5
@@ -90,7 +90,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa
+  exp_name: dot_wa
 
 DISTRIBUTED:
   gpus: [0]
