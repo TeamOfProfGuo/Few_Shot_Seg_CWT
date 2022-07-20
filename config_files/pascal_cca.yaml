@@ -6,7 +6,7 @@ DATA:
   train_list: lists/pascal/train.txt
   data_root: ../dataset/VOCdevkit/VOC2012
   val_list: lists/pascal/val.txt
-  num_classes_tr: 2  # Counting background for training
+  num_classes_tr: 16  # Counting background for training
   num_classes_val: 5
   use_split_coco: False
   workers: 0

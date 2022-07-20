@@ -1,6 +1,6 @@
 # encoding:utf-8
 import pdb
-import gc
+
 import os
 import time
 import random
@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'mmn_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'cca_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -62,18 +62,18 @@ def main(args: argparse.Namespace) -> None:
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
-            pre_dict = model.state_dict()
+            model_dict = model.state_dict()
 
-            for index, key in enumerate(pre_dict.keys()):
+            for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    if pre_dict[key].shape == pre_weight['module.' + key].shape:
-                        pre_dict[key] = pre_weight['module.' + key]
+                    map_key = key if (args.train_name=='coco' and args.layers==101) else 'module.' + key
+                    if model_dict[key].shape == pre_weight[map_key].shape:
+                        model_dict[key] = pre_weight[map_key]
                     else:
-                        log('Pre-trained shape and model shape for {}: {}, {}'.format(
-                            key, pre_weight['module.' + key].shape, pre_dict[key].shape))
+                        log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
                         continue
 
-            model.load_state_dict(pre_dict, strict=True)
+            model.load_state_dict(model_dict, strict=True)
             log("=> loaded weight '{}'".format(fname))
         else:
             log("=> no weight found at '{}'".format(fname))
@@ -144,31 +144,46 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            Trans.train()
-            use_amp = args.use_amp
+            use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+            Trans.train()
+            criterion = SegLoss(loss_type=args.loss_type)
+            att_fq = []
+            sum_loss=0
             with torch.cuda.amp.autocast(enabled=use_amp):
-                fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)  # f_q: single, f_s: k-shot
+                for k in range(args.shot):
+                    single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
+                    single_f_s = f_s[k:k + 1]
+                    _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                    att_fq.append(att_fq_single)       # [ 1, 512, h, w]
+
+                    if args.loss_shot=='sum':
+                        pred_att = model.classifier(att_fq_single)
+                        pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                        sum_loss = sum_loss + criterion(pred_att, q_label.long())
+
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = att_fq.mean(dim=0, keepdim=True)
+                fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+
                 pred_q1 = model.classifier(att_fq)
                 pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
                 pred_q = model.classifier(fq)
                 pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
                 # Loss function: Dynamic class weights used for query image only during training
-                criterion = SegLoss(loss_type=args.loss_type)
-                q_loss1 = criterion(pred_q1, q_label.long())
                 q_loss0 = criterion(pred_q0, q_label.long())
-                q_loss  = criterion(pred_q, q_label.long())
+                q_loss = criterion(pred_q, q_label.long())
+
+                if args.loss_shot == 'avg':
+                    q_loss1 = criterion(pred_q1, q_label.long())
+                else:   # 'sum'
+                    q_loss1 = sum_loss
 
                 if args.get('aux', False) == False:
                     loss = q_loss1
                 elif args.get('aux', False) != False:
                     loss = q_loss1 + args.aux * q_loss
-
-            del fq_lst, fs_lst, f_q, f_s, qry_img, q_label, spt_imgs, s_label
-            gc.collect()
-            torch.cuda.empty_cache()
 
             scaler.scale(loss).backward()
             scaler.step(optimizer_meta)
@@ -290,12 +305,20 @@ def validate_epoch(args, val_loader, model, Net):
 
         Net.eval()
         with torch.no_grad():
-            fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
-            pred_q1 = model.classifier(att_fq)
-            pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            att_fq = []
+            for k in range(args.shot):
+                single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
+                single_f_s = f_s[k:k + 1]
+                _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
+                att_fq.append(att_out)  # [ 1, 512, h, w]
+            att_fq = torch.cat(att_fq, dim=0)
+            att_fq = att_fq.mean(dim=0, keepdim=True)
+            fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
 
-            pred_q = model.classifier(fq)
-            pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pd_q1 = model.classifier(att_fq)
+            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pd_q = model.classifier(fq)
+            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
@@ -339,5 +362,4 @@ if __name__ == "__main__":
 
     world_size = len(args.gpus)
     args.distributed = (world_size > 1)
-
     main(args)
