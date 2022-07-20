@@ -136,6 +136,8 @@ class PSPNet(nn.Module):
         elif args.get('dist') in ['cos', 'cosN']:
             self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
 
+        if args.inhe
+
         self.gamma = nn.Parameter(torch.tensor(0.2))
 
     def freeze_bn(self):
