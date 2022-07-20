@@ -6,9 +6,11 @@ import torch.nn as nn
 
 
 class SegLoss(nn.Module):
-    def __init__(self, loss_type='wt_ce'):   # loss_type ['wt_ce', 'wt_dc']
+    def __init__(self, loss_type='wt_ce', num_cls=2, fg_idx=1):   # loss_type ['wt_ce', 'wt_dc']
         super().__init__()
         self.loss_type = loss_type
+        self.num_cls = num_cls
+        self.fg_idx = fg_idx
 
     def forward(self, prediction, target_seg,):
         if self.loss_type=='wt_dc' or self.loss_type=='dc':
@@ -17,12 +19,13 @@ class SegLoss(nn.Module):
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             return criterion_standard(prediction, target_seg)
         else:
-            return weighted_ce_loss(prediction, target_seg, ignore_index=255)
+            return weighted_ce_loss(prediction, target_seg, ignore_index=255, num_cls=self.num_cls, fg_idx=self.fg_idx)
 
 
-def weighted_ce_loss(pred, label, ignore_index=255):
+def weighted_ce_loss(pred, label, ignore_index=255, num_cls=2, fg_idx=1):
     count = torch.bincount(label.view(-1))
-    weight = torch.tensor([1.0, count[0]/count[1]])
+    weight = torch.tensor([1.0]*num_cls)
+    weight[fg_idx] = count[0]/count[fg_idx]
     if torch.cuda.is_available():
         weight = weight.cuda()
     criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index)
