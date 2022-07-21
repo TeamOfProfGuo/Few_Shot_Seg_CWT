@@ -209,7 +209,7 @@ def main(args: argparse.Namespace) -> None:
             # Print loss and mIoU
             IoUb, IoUf = dict(), dict()
             for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2)]:
-                intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, args.num_classes_tr, 255)
+                intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, num_classes=2, ignore_index=255)
                 IoUb[idx], IoUf[idx] = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
