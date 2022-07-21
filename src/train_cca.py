@@ -107,7 +107,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ====== Training  ======
     log('==> Start training')
-    for epoch in range(0, args.epochs+1):
+    for epoch in range(1, args.epochs+1):
 
         train_loss_meter1 = AverageMeter()
         train_iou_meter1 = AverageMeter()
@@ -362,7 +362,7 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
         loss1 = criterion_standard(torch.log(pred_q1), q_label)
         loss_meter.update(loss1.item())
 
-        if (iter_num % 10 == 0):
+        if (iter_num % 100 == 0):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
