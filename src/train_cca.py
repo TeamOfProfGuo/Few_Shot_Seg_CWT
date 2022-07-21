@@ -127,7 +127,7 @@ def main(args: argparse.Namespace) -> None:
                 s_label = s_label.cuda()  # [1, 1, h, w]
                 q_label = q_label.cuda()  # [1, h, w]
                 qry_img = qry_img.cuda()  # [1, 3, h, w]
-                subcls = subcls.cuda()  # [ tensor[id] ]
+                subcls = subcls[0].cuda()  # [ tensor[id] ]
 
             # ================ Phase 1: Train the binary classifier on support samples ==============
 
@@ -135,7 +135,7 @@ def main(args: argparse.Namespace) -> None:
             s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
             # reset weight and change s_label to 16 way classification
-            reset_cls_wt(model.classifier, pre_cls_wt, args.num_classes_tr, idx_cls=subcls[0])
+            reset_cls_wt(model.classifier, pre_cls_wt, args.num_classes_tr, idx_cls=subcls)
 
             model.eval()
             with torch.no_grad():
@@ -143,10 +143,10 @@ def main(args: argparse.Namespace) -> None:
                 out = model.classifier(f_s)  # [1, 16, 60, 60]
                 out = F.interpolate(out, size=(473, 473), mode='bilinear', align_corners=True)
 
-            s_label = reset_spt_label(s_label, pred=out, idx_cls=subcls[0])
+            s_label = reset_spt_label(s_label, pred=out, idx_cls=subcls)
 
             # fine-tune classifier
-            model.increment_inner_loop(f_s, s_label, cls_idx=subcls[0], meta_train=True)
+            model.increment_inner_loop(f_s, s_label, cls_idx=subcls, meta_train=True)
 
             # ============== Phase 2: Train the attention to update query score  ==============
             with torch.no_grad():
@@ -182,9 +182,9 @@ def main(args: argparse.Namespace) -> None:
                 pred_q = model.classifier(fq)
                 pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-                pred_q0 = compress_pred(pred_q0, subcls[0], 'lg')
-                pred_q1 = compress_pred(pred_q1, subcls[0], 'lg')
-                pred_q  = compress_pred(pred_q,  subcls[0], 'lg')
+                pred_q0 = compress_pred(pred_q0, subcls, 'lg')
+                pred_q1 = compress_pred(pred_q1, subcls, 'lg')
+                pred_q  = compress_pred(pred_q,  subcls, 'lg')
 
                 # Loss function: Dynamic class weights used for query image only during training
                 q_loss0 = criterion(pred_q0, q_label.long(), 'pb')
