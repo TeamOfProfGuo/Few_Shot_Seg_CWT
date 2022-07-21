@@ -107,7 +107,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ====== Training  ======
     log('==> Start training')
-    for epoch in range(1, args.epochs+1):
+    for epoch in range(0, args.epochs+1):
 
         train_loss_meter1 = AverageMeter()
         train_iou_meter1 = AverageMeter()
@@ -230,7 +230,7 @@ def main(args: argparse.Namespace) -> None:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, pre_cls_wt=pre_cls_wt)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
