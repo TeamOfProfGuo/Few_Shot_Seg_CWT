@@ -136,7 +136,8 @@ class PSPNet(nn.Module):
         elif args.get('dist') in ['cos', 'cosN']:
             self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
 
-        if args.inhe
+        if args.inherit_base:
+            self.val_classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr+1, kernel_size=1, bias=False)
 
         self.gamma = nn.Parameter(torch.tensor(0.2))
 
@@ -203,6 +204,23 @@ class PSPNet(nn.Module):
             optimizer.zero_grad()
             s_loss.backward()
             optimizer.step()
+
+    def increment_inner_loop(self, f_s, s_label, cls_idx, meta_train=True):
+        """cls_idx: set weight in loss"""
+        classifier = self.classifier if meta_train else self.val_classifier
+        num_cls = self.args.num_classes_tr if meta_train else self.args.num_classes_tr+1
+
+        optimizer = torch.optim.SGD(classifier.parameters(), lr=self.args.cls_lr)
+        criterion = SegLoss(loss_type=self.args.inner_loss_type, num_cls=num_cls, fg_idx=cls_idx)
+
+        for index in range(self.args.adapt_iter):
+            pred_s_label = classifier(f_s)  # [n_shot, 2(cls), 60, 60]
+            pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:], mode='bilinear', align_corners=True)
+            s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+            optimizer.zero_grad()
+            s_loss.backward()
+            optimizer.step()
+
 
     def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s=None, ret_corr=False):
         # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
