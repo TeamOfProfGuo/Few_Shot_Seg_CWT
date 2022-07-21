@@ -79,7 +79,7 @@ Classifier:
   cls_type: oooo
 
 EVALUATION:
-  shot: 5
+  shot: 1
   random_shot: False
   episodic: True
   norm_feat: True
