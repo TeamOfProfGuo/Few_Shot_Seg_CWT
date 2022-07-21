@@ -63,7 +63,7 @@ def main(args: argparse.Namespace) -> None:
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
             model_dict = model.state_dict()
-            pre_cls_wt = pre_weight['classifier.weight']    # [16, 512, 1, 1]
+            pre_cls_wt = pre_weight['classifier.weight'].cuda()    # [16, 512, 1, 1]
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
@@ -71,9 +71,6 @@ def main(args: argparse.Namespace) -> None:
                         model_dict[key] = pre_weight[key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
-
-                model_dict['classifier.weight'][:args.num_classes_tr] = pre_cls_wt
-                model_dict['val_classifier.weight'][:args.num_classes_tr] = pre_cls_wt
 
             model.load_state_dict(model_dict, strict=True)
             log("=> loaded weight '{}'".format(fname))

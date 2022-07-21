@@ -87,7 +87,7 @@ def reset_cls_wt(cls_module, pre_cls_wt, num_classes_tr, idx_cls):
     B, ch, _, _ = cls_module.weight.shape
     cls_module.weight.data[:num_classes_tr] = pre_cls_wt
     std = 1.0 / np.sqrt(ch)
-    cls_module.weight.data[idx_cls] = torch.Tensor([0.0] * ch, device=cls_module.weight.device).uniform_(-std, std).reshape((1, ch, 1, 1))
+    cls_module.weight.data[idx_cls] = torch.empty([ch], device=cls_module.weight.device).uniform_(-std, std).reshape((1, ch, 1, 1))
 
 
 def reset_spt_label(s_label, pred, idx_cls):
