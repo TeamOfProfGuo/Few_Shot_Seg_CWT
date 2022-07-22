@@ -10,6 +10,7 @@
 #SBATCH --mail-user=lg154@nyu.edu
 #SBATCH --output=ddp.out
 #SBATCH --gres=gpu:2 # How much gpu need, n is the number
+#SBATCH --partition=v100,a100
 
 module purge
 
