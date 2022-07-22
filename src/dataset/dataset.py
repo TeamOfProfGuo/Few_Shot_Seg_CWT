@@ -303,10 +303,11 @@ class EpisodicData(Dataset):
                     while len(img_aug_lst) < self.meta_aug:
                         single_img, single_label = self.meta_trans_pre(support_image_list[k], support_label_list[k])
                         pxl_cnt = np.bincount(single_label.astype(int).flatten())
-                        if fg_ratio * 0.3 <= pxl_cnt[1]/(np.sum(pxl_cnt)) <= min(fg_ratio*3, 0.85) and pxl_cnt[1]>=30:
-                            single_img, single_label = trans_after(single_img, single_label)
-                            img_aug_lst.append(single_img.unsqueeze(0))
-                            label_aug_lst.append(single_label.unsqueeze(0))
+                        if len(pxl_cnt)>=2:
+                            if fg_ratio * 0.3 <= pxl_cnt[1]/(np.sum(pxl_cnt)) <= min(fg_ratio*3, 0.85) and pxl_cnt[1]>=30:
+                                single_img, single_label = trans_after(single_img, single_label)
+                                img_aug_lst.append(single_img.unsqueeze(0))
+                                label_aug_lst.append(single_label.unsqueeze(0))
 
                     support_image_list[k] = torch.cat(img_aug_lst, dim=0)
                     support_label_list[k] = torch.cat(label_aug_lst, dim=0)
