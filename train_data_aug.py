@@ -27,6 +27,17 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 from mask import Masker
 masker = Masker()
+
+
+def get_gram_matrix(fea):
+    b, c, h, w = fea.shape
+    fea = fea.reshape(b, c, h*w)    # C*N
+    fea_T = fea.permute(0, 2, 1)    # N*C
+    fea_norm = fea.norm(2, 2, True)
+    fea_T_norm = fea_T.norm(2, 1, True)
+    gram = torch.bmm(fea, fea_T)/(torch.bmm(fea_norm, fea_T_norm) + 1e-7)    # C*C
+    return gram
+
 # =================== get config ===================
 """  
 DATA= pascal 
@@ -58,6 +69,10 @@ args.test_split
 args.cls_type = 'oooo'
 args.inherit_base = False
 args.meta_aug = 5
+
+args.scale_min
+args.scale_max
+
 
 # ====================================  main ================================================
 random.seed(args.manual_seed)
@@ -129,7 +144,7 @@ max_val_mIoU = 0.
 epoch = 1
 train_loss_meter = AverageMeter()
 train_iou_meter = AverageMeter()
-iterable_train_loader = iter(train_loader,)
+iterable_train_loader = iter(episodic_val_loader,)
 
 # ====== iteration starts
 qry_img, q_label, spt_imgs, s_label, subcls, sl, ql = iterable_train_loader.next()
@@ -140,11 +155,14 @@ s_label = s_label.squeeze(0).long() # [n_shots, img_size, img_size]
 invTrans = transforms.Compose([transforms.Normalize(mean=[0., 0., 0.], std=[1/0.229, 1/0.224, 1/0.225]),
                                transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
                                ])
-inv_s = invTrans(spt_imgs[4])
+idx = 1
+inv_s = invTrans(spt_imgs[idx])
 for i in range(1, 473+1, 8):
     for j in range(1, 473+1, 8):
         inv_s[:, i-1, j-1] = torch.tensor([0, 1.0, 0])
 plt.imshow(inv_s.permute(1, 2, 0))
+mask = masker.mask_to_rgb(s_label[idx].squeeze())
+plt.imshow(mask)
 
 inv_q = invTrans(qry_img[0])
 for i in range(1, 473+1, 8):
@@ -161,21 +179,40 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 model.eval()
 with torch.no_grad():
     f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
+    f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+
+# ======= similarity based on gram matrix
+
+
+que_gram = get_gram_matrix(eval('query_feat_' + self.low_fea_id)) # [bs, C, C] in (0,1)
+norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
+est_val_list = []
+for supp_item in supp_feat_list:
+    supp_gram = get_gram_matrix(supp_item)
+    gram_diff = que_gram - supp_gram
+    est_val_list.append((gram_diff.norm(dim=(1,2))/norm_max).reshape(bs,1,1,1)) # norm2
+est_val_total = torch.cat(est_val_list, 1)  # [bs, shot, 1, 1]
+
+
 
 model.inner_loop(f_s, s_label)
 model.inner_loop(f_s[0:1], s_label[0:1])
 # ====== Phase 2: Train the attention to update query score  ======
 model.eval()
 with torch.no_grad():
-    f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
     pred_q0 = model.classifier(f_q)
     pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+    pred_s0 = model.classifier(f_s[0:1])
+    pred_s0 = F.interpolate(pred_s0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
 intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
 print('pred 0', np.round( (intersection0 / (union0 + 1e-10)).numpy() , 3) )
 
 masker = Masker()
 mask = masker.mask_to_rgb(pred_q0.argmax(1).squeeze())
+plt.imshow(mask)
+
+mask = masker.mask_to_rgb(s_label[0].squeeze())
 plt.imshow(mask)
 
 
