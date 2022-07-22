@@ -13,7 +13,7 @@ class SegLoss(nn.Module):
         self.num_cls = num_cls
         self.fg_idx = fg_idx
 
-    def forward(self, prediction, target_seg, input_type='pb'):
+    def forward(self, prediction, target_seg, input_type='lg'):
         """whether prediction has already processed by CrossEntropy: 'pb':prob, 'lt':lg"""
         if self.loss_type=='wt_dc' or self.loss_type=='dc':
             return weighted_dice_loss(prediction, target_seg, reduction='sum', input_type=input_type)
