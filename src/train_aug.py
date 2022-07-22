@@ -212,7 +212,7 @@ def main(args: argparse.Namespace) -> None:
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
-            if i% args.log_iter==0:
+            if i% args.log_iter==1:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
@@ -293,13 +293,25 @@ def validate_epoch(args, val_loader, model, Net):
         model.eval()
         with torch.no_grad():
             f_s, fs_lst = model.extract_features(spt_imgs)
+            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
         model.inner_loop(f_s, s_label)
 
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
-            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
+        IoUb_aug, IoUf_aug = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
+
+        model.inner_loop(f_s[0:1], s_label[0:1])
+        with torch.no_grad():
+            pred_q0 = model.classifier(f_q)
+            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
+        IoUb, IoUf = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
+
+        log('iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f}'.format(IoUf, IoUb, IoUf_aug, IoUb_aug))
 
         Net.eval()
         with torch.no_grad():
