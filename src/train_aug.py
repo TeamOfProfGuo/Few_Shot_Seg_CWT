@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'msc_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'aug_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -66,12 +66,10 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    map_key = key if (args.train_name=='coco' and args.layers==101) else 'module.' + key
-                    if model_dict[key].shape == pre_weight[map_key].shape:
-                        model_dict[key] = pre_weight[map_key]
+                    if model_dict[key].shape == pre_weight[key].shape:
+                        model_dict[key] = pre_weight[key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
-                        continue
 
             model.load_state_dict(model_dict, strict=True)
             log("=> loaded weight '{}'".format(fname))
@@ -152,8 +150,8 @@ def main(args: argparse.Namespace) -> None:
             sum_loss=0
             with torch.cuda.amp.autocast(enabled=use_amp):
                 for k in range(args.shot):
-                    single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
-                    single_f_s = f_s[k:k + 1]
+                    single_fs_lst = {key: [ve[k*args.meta_aug:k*args.meta_aug + 1] for ve in value] for key, value in fs_lst.items()}   # only compare to org img
+                    single_f_s = f_s[k*args.meta_aug:k*args.meta_aug + 1]
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
@@ -307,8 +305,8 @@ def validate_epoch(args, val_loader, model, Net):
         with torch.no_grad():
             att_fq = []
             for k in range(args.shot):
-                single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
-                single_f_s = f_s[k:k + 1]
+                single_fs_lst = {key: [ve[k*args.meta_aug:k*args.meta_aug + 1] for ve in value] for key, value in fs_lst.items()}
+                single_f_s = f_s[k*args.meta_aug:k*args.meta_aug + 1]
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
             att_fq = torch.cat(att_fq, dim=0)

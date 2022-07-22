@@ -14,13 +14,13 @@ DATA:
   padding_label: 255
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
-  scale_min: 0.5
-  scale_max: 2.0
+  scale_min: 0.33
+  scale_max: 3.0
   rot_min: -10
   rot_max: 10
   augmentations: ['hor_flip', 'resize_np']
 
-  meta_aug: 5
+  meta_aug: 5   # default is 1/can not be 0
 
 TRAIN:
   ckpt_path: checkpoints/
