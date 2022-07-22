@@ -136,7 +136,7 @@ class PSPNet(nn.Module):
         elif args.get('dist') in ['cos', 'cosN']:
             self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
 
-        if args.inherit_base:
+        if args.get('inherit_base', False):
             self.val_classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr+1, kernel_size=1, bias=False)
 
         self.gamma = nn.Parameter(torch.tensor(0.2))
