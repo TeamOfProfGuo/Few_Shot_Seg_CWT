@@ -288,6 +288,52 @@ class Crop(object):
             return image
 
 
+class FitCrop(object):
+    """Crops the given ndarray image (H*W*C or H*W).
+    Args:
+        size (sequence or int): Desired output size of the crop. If size is an
+        int instead of sequence like (h, w), a square crop (size, size) is made.
+    """
+    def __init__(self, fg_ratio, thresh=0.05):
+        self.thresh = thresh  # whether to crop at 1/2 or 1/3
+        self.k = 2 if fg_ratio <= self.thresh else 3  # if fg is very small portion, will cutoff bigger area
+
+    def __call__(self, image, label):
+        h, w, _ = image.shape
+
+        label_binary = label.copy()
+        label_binary[label_binary == 255] = 0
+        _, labels = cv2.connectedComponents(label_binary)
+        freq = np.bincount(labels.flatten())
+        freq[0] = 0
+        obj_idx = np.argmax(freq)
+
+        mask_pos = np.where(labels == obj_idx)
+        min_h, max_h, min_w, max_w = np.min(mask_pos[0]), np.max(mask_pos[0]), np.min(mask_pos[1]), np.max(mask_pos[1])
+
+        h0, h1 = min_h//self.k, h - (h-max_h)//self.k
+        w0, w1 = min_w//self.k, w - (w-max_w)//self.k
+
+        if (h1-h0)/(w1-w0) <= 0.7:   # height too small
+            if h0 <= h-h1:
+                h0 = 0
+            else:
+                h1 = h
+        elif (h1-h0)/(w1-w0) >= 1.5:  # width too small
+            if w0 <= w-w1:
+                w0 = 0
+            else:
+                w1 = w
+
+        image = image[h0:h1, w0:w1]
+        if label is not None:
+            label = label[h0:h1, w0:w1]
+            return image, label
+        else:
+            return image
+
+
+
 class RandRotate(object):
     # Randomly rotate image & label with rotate factor in [rotate_min, rotate_max]
     def __init__(self, rotate, padding, ignore_label=255, p=0.5):

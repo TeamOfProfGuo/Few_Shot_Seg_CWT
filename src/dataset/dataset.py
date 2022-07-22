@@ -294,23 +294,16 @@ class EpisodicData(Dataset):
             for k in range(shot):                             # transform support img
                 if self.meta_aug>=1:
                     org_img, org_label = self.transform(support_image_list[k], support_label_list[k])  # flip and resize
-                    img_aug_lst, label_aug_lst = [org_img.unsqueeze(0)], [org_label.unsqueeze(0)]
+                    label_freq = np.bincount(support_label_list[k].flatten())
+                    fg_ratio = label_freq[1] / label_freq[0]
+                    if fg_ratio <= 0.15:
+                        meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
+                    else:
+                        meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
+                    new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])
 
-                    trans_after = transform.Compose(self.transform.segtransform[-2:])
-                    pxl_cnt = np.bincount(support_label_list[k].astype(int).flatten())
-                    fg_ratio = pxl_cnt[1]/(np.sum(pxl_cnt))
-
-                    while len(img_aug_lst) < self.meta_aug:
-                        single_img, single_label = self.meta_trans_pre(support_image_list[k], support_label_list[k])
-                        pxl_cnt = np.bincount(single_label.astype(int).flatten())
-                        if len(pxl_cnt)>=2:
-                            if fg_ratio * 0.3 <= pxl_cnt[1]/(np.sum(pxl_cnt)) <= min(fg_ratio*3, 0.85) and pxl_cnt[1]>=30:
-                                single_img, single_label = trans_after(single_img, single_label)
-                                img_aug_lst.append(single_img.unsqueeze(0))
-                                label_aug_lst.append(single_label.unsqueeze(0))
-
-                    support_image_list[k] = torch.cat(img_aug_lst, dim=0)
-                    support_label_list[k] = torch.cat(label_aug_lst, dim=0)
+                    support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)
+                    support_label_list[k] = torch.cat([org_label.unsqueeze(0), new_label.unsqueeze(0)], dim=0)
 
                 else:
                     support_image_list[k], support_label_list[k] = self.transform(support_image_list[k], support_label_list[k])
