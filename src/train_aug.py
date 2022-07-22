@@ -311,7 +311,7 @@ def validate_epoch(args, val_loader, model, Net):
         intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
         IoUb, IoUf = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
-        log('iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f}'.format(IoUf, IoUb, IoUf_aug, IoUb_aug))
+        log('iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f} {} pth {} {}'.format(IoUf, IoUb, IoUf_aug, IoUb_aug, spprt_oris[0], qry_oris[0]))
 
         Net.eval()
         with torch.no_grad():
