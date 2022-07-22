@@ -46,7 +46,7 @@ def get_train_loader(args, episodic=True, return_path=False):
     # ====== Build loader ======
     if episodic:
         train_data = EpisodicData(
-            mode_train=True, transform=train_transform, class_list=class_list, args=args
+            mode_train=True, dt_transform=train_transform, class_list=class_list, args=args
         )
     else:
         train_data = StandardData(transform=train_transform, class_list=class_list,
@@ -94,7 +94,7 @@ def get_val_loader(args, episodic=True, return_path=False):
 
     # ====== Build loader ======
     if episodic:
-        val_data = EpisodicData(mode_train=False, transform=val_transform, class_list=class_list, args=args)
+        val_data = EpisodicData(mode_train=False, dt_transform=val_transform, class_list=class_list, args=args)
 
         val_loader = torch.utils.data.DataLoader(
             val_data,
@@ -178,11 +178,12 @@ class StandardData(Dataset):
 class EpisodicData(Dataset):
     def __init__(self,
                  mode_train: bool,
-                 transform: transform.Compose,
+                 dt_transform: transform.Compose,
                  class_list: List[int],
                  args: argparse.Namespace):
 
         self.shot = args.shot
+        self.meta_aug = args.get('meta_aug', 0)
         self.random_shot = args.random_shot
         self.data_root = args.data_root
         self.class_list = class_list
@@ -190,7 +191,11 @@ class EpisodicData(Dataset):
             self.data_list, self.sub_class_file_list = make_dataset(args.data_root, args.train_list, self.class_list)
         else:
             self.data_list, self.sub_class_file_list = make_dataset(args.data_root, args.val_list, self.class_list)
-        self.transform = transform
+        self.transform = dt_transform
+
+        if self.meta_aug > 1:
+            self.meta_trans_pre = transform.Compose([transform.RandomHorizontalFlip(), transform.RandScale([args.scale_min, args.scale_max]),
+                              transform.Crop([args.image_size, args.image_size], crop_type='rand', padding=[0 for x in args.mean], ignore_label=255)])
 
     def __len__(self):
         return len(self.data_list)
@@ -216,7 +221,7 @@ class EpisodicData(Dataset):
             if c in self.class_list:  # current list of classes to try
                 new_label_class.append(c)
         label_class = new_label_class
-        assert len(label_class) > 0
+        assert len(label_class) > 0      # 只选取 满足 train/test split的class
 
         # ====== From classes in query image, chose one randomly ======
         class_chosen = np.random.choice(label_class)
@@ -227,7 +232,7 @@ class EpisodicData(Dataset):
         new_label[target_pix] = 1
         label = new_label
 
-        file_class_chosen = self.sub_class_file_list[class_chosen]     # 选取的class, 所对应的image/label path
+        file_class_chosen = self.sub_class_file_list[class_chosen]     # 当前split 选取的class, 所对应的image/label path
         num_file = len(file_class_chosen)
 
         # ====== Build support ======
@@ -287,9 +292,29 @@ class EpisodicData(Dataset):
         if self.transform is not None:
             qry_img, target = self.transform(image, label)    # transform query img
             for k in range(shot):                             # transform support img
-                support_image_list[k], support_label_list[k] = self.transform(support_image_list[k], support_label_list[k])
-                support_image_list[k] = support_image_list[k].unsqueeze(0)
-                support_label_list[k] = support_label_list[k].unsqueeze(0)
+                if self.meta_aug>=1:
+                    org_img, org_label = self.transform(support_image_list[k], support_label_list[k])  # flip and resize
+                    img_aug_lst, label_aug_lst = [org_img.unsqueeze(0)], [org_label.unsqueeze(0)]
+
+                    trans_after = transform.Compose(self.transform.segtransform[-2:])
+                    pxl_cnt = np.bincount(support_label_list[k].astype(int).flatten())
+                    fg_ratio = pxl_cnt[1]/(np.sum(pxl_cnt))
+
+                    while len(img_aug_lst) < self.meta_aug:
+                        single_img, single_label = self.meta_trans_pre(support_image_list[k], support_label_list[k])
+                        pxl_cnt = np.bincount(single_label.astype(int).flatten())
+                        if fg_ratio * 0.3 <= pxl_cnt[1]/(np.sum(pxl_cnt)) <= min(fg_ratio*3, 0.85) and pxl_cnt[1]>=30:
+                            single_img, single_label = trans_after(single_img, single_label)
+                            img_aug_lst.append(single_img.unsqueeze(0))
+                            label_aug_lst.append(single_label.unsqueeze(0))
+
+                    support_image_list[k] = torch.cat(img_aug_lst, dim=0)
+                    support_label_list[k] = torch.cat(label_aug_lst, dim=0)
+
+                else:
+                    support_image_list[k], support_label_list[k] = self.transform(support_image_list[k], support_label_list[k])
+                    support_image_list[k] = support_image_list[k].unsqueeze(0)
+                    support_label_list[k] = support_label_list[k].unsqueeze(0)
 
         # Reshape properly
         spprt_imgs = torch.cat(support_image_list, 0)

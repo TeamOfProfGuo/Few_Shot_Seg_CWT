@@ -280,6 +280,7 @@ class Crop(object):
             h_off = int((h - self.crop_h) / 2)
             w_off = int((w - self.crop_w) / 2)
         image = image[h_off:h_off+self.crop_h, w_off:w_off+self.crop_w]
+        image = image.astype(np.int)
         if label is not None:
             label = label[h_off:h_off+self.crop_h, w_off:w_off+self.crop_w]
             return image, label

@@ -20,6 +20,8 @@ DATA:
   rot_max: 10
   augmentations: ['hor_flip', 'resize_np']
 
+  meta_aug: 5
+
 TRAIN:
   ckpt_path: checkpoints/
   batch_size: 1
