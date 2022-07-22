@@ -66,12 +66,11 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    map_key = key if (args.train_name=='coco' and args.layers==101) else 'module.' + key
+                    map_key = key  # if (args.train_name=='coco' and args.layers==101) else 'module.' + key
                     if model_dict[key].shape == pre_weight[map_key].shape:
                         model_dict[key] = pre_weight[map_key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
-                        continue
 
             model.load_state_dict(model_dict, strict=True)
             log("=> loaded weight '{}'".format(fname))

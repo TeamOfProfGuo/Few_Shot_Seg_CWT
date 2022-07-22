@@ -27,7 +27,7 @@ class SegLoss(nn.Module):
 def weighted_ce_loss(pred, label, ignore_index=255, num_cls=2, fg_idx=1):
     count = torch.bincount(label.view(-1))
     fg_cnt = count[fg_idx]
-    bg_cnt = torch.sum(count) if len(count)<=255 else torch.sum(count)-count[255] # all pixels not belonging to current cls CONSIDERED as BG
+    bg_cnt = (torch.sum(count)-fg_cnt) if len(count)<=255 else (torch.sum(count)-count[255] -fg_cnt) # all pixels not belonging to current cls CONSIDERED as BG
     weight = torch.tensor([1.0]*num_cls)
     weight[fg_idx] = bg_cnt/fg_cnt
     if torch.cuda.is_available():
