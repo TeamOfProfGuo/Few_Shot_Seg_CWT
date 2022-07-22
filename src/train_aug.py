@@ -269,6 +269,10 @@ def validate_epoch(args, val_loader, model, Net):
     cls_union1 = defaultdict(int)
     IoU1 = defaultdict(float)
 
+    cls_intersection2 = defaultdict(int)  # Default value is 0
+    cls_union2 = defaultdict(int)
+    IoU2 = defaultdict(float)
+
     val_iou_compare = CompareMeter()
 
     for e in range(args.test_num):
@@ -297,20 +301,14 @@ def validate_epoch(args, val_loader, model, Net):
 
         model.inner_loop(f_s[0:1], s_label[0:1])
         with torch.no_grad():
-            pred_q0 = model.classifier(f_q)
-            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
-        IoUb, IoUf = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
+            pred_q2 = model.classifier(f_q)
+            pred_q2 = F.interpolate(pred_q2, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         model.inner_loop(f_s, s_label)
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-
-        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
-        IoUb_aug, IoUf_aug = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
-        log('iter {} iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f} cls {}'.format(e, IoUf, IoUb, IoUf_aug, IoUb_aug, subcls[0].item()))
 
         Net.eval()
         with torch.no_grad():
@@ -333,7 +331,7 @@ def validate_epoch(args, val_loader, model, Net):
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q)] ):
+                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection2, cls_union2, IoU2, pred_q2)] ):
             intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
@@ -341,7 +339,16 @@ def validate_epoch(args, val_loader, model, Net):
             IoU_[curr_cls] = cls_intersection_[curr_cls] / (cls_union_[curr_cls] + 1e-10)   # cls wise IoU
             if id==0: iouf0 = intersection[1]/union[1]     # fg IoU for the current episode
             elif id==1: iouf1 = intersection[1]/union[1]
+
+            if id == 0:
+                IoUb_aug, IoUf_aug = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
+            elif id == 3:
+                IoUb, IoUf = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
+
         val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
+
+
+        log('iter {} iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f} cls {}'.format(e, IoUf, IoUb, IoUf_aug, IoUb_aug, subcls[0].item()))
 
         criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
         loss1 = criterion_standard(pred_q1, q_label)
