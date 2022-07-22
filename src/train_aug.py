@@ -294,15 +294,6 @@ def validate_epoch(args, val_loader, model, Net):
         with torch.no_grad():
             f_s, fs_lst = model.extract_features(spt_imgs)
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-        model.inner_loop(f_s, s_label)
-
-        # ====== Phase 2: Update query score using attention. ======
-        with torch.no_grad():
-            pred_q0 = model.classifier(f_q)
-            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-
-        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
-        IoUb_aug, IoUf_aug = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
         model.inner_loop(f_s[0:1], s_label[0:1])
         with torch.no_grad():
@@ -311,7 +302,15 @@ def validate_epoch(args, val_loader, model, Net):
         intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
         IoUb, IoUf = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
-        log('iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f} pth {} {}'.format(IoUf, IoUb, IoUf_aug, IoUb_aug, spprt_oris[0], qry_oris[0]))
+        model.inner_loop(f_s, s_label)
+        # ====== Phase 2: Update query score using attention. ======
+        with torch.no_grad():
+            pred_q0 = model.classifier(f_q)
+            pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+        intersection, union, target = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
+        IoUb_aug, IoUf_aug = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
+        log('iter {} iouf {:.4f} ioub {:.4f} vs iouf_aug {:.4f} ioub_aug {:.4f} cls {}'.format(e, IoUf, IoUb, IoUf_aug, IoUb_aug, subcls[0].item()))
 
         Net.eval()
         with torch.no_grad():
@@ -352,7 +351,7 @@ def validate_epoch(args, val_loader, model, Net):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+            log('==> Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
                 iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
