@@ -58,7 +58,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
+                'split={}/pspnet_{}{}/best0.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
@@ -66,7 +66,7 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    map_key = key  # if (args.train_name=='coco' and args.layers==101) else 'module.' + key
+                    map_key = 'module.' + key  # if (args.train_name=='coco' and args.layers==101) else 'module.' + key
                     if model_dict[key].shape == pre_weight[map_key].shape:
                         model_dict[key] = pre_weight[map_key]
                     else:

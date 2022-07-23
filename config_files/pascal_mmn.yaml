@@ -92,7 +92,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_wa_att2
+  exp_name: dot_wa_old_pre
 
 DISTRIBUTED:
   gpus: [0]
