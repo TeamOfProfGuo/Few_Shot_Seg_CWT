@@ -41,7 +41,7 @@ TRAIN:
   scheduler: cosine
   milestones: [40, 70]
   log_iter: 1190
-  adapt_iter: 150
+  adapt_iter: 200
 
   use_amp: True
 
@@ -92,7 +92,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_wa_debug_iter150
+  exp_name: dot_wa_att2
 
 DISTRIBUTED:
   gpus: [0]
