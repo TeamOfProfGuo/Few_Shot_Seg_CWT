@@ -1,0 +1,98 @@
+DATA:
+  train_name: pascal
+  test_name: default
+  train_split: 0
+  test_split: default
+  train_list: lists/pascal/train.txt
+  data_root: ../dataset/VOCdevkit/VOC2012
+  val_list: lists/pascal/val.txt
+  num_classes_tr: 2  # Counting background for training
+  num_classes_val: 5
+  use_split_coco: False
+  workers: 0
+  image_size: 473
+  padding_label: 255
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  scale_min: 0.33
+  scale_max: 3.0
+  rot_min: -10
+  rot_max: 10
+  augmentations: ['hor_flip', 'resize_np']
+
+  meta_aug: 1  # default is 1/can not be 0
+
+TRAIN:
+  ckpt_path: checkpoints/
+  batch_size: 1
+  epochs: 8
+  log_freq : 50
+  save_models: False
+  cls_lr: 0.1
+  trans_lr: 0.0015
+  scale_lr: 1.0
+  mixup: False
+  lr_stepsize: 30
+  momentum: 0.9
+  gamma: 0.1     # for scheduler
+  nesterov: True
+  weight_decay: 0.0001
+  main_optim: SGD
+  scheduler: cosine
+  milestones: [40, 70]
+  log_iter: 1190
+  adapt_iter: 200
+
+  use_amp: True
+
+MODEL:
+  arch: resnet
+  pretrained: False  # Means the backbone has been pre-trained
+  bins: [1, 2, 3, 6]
+  dropout: 0.1
+  m_scale: False
+  layers: 50
+  bottleneck_dim: 512
+  backbone_dim: 2048
+  resume_weights: ./pretrained_models/
+  model_dir: model_ckpt
+
+  conv4d: red  # red, cv4
+
+  temp: 20.0
+  att_wt: 0.2
+  aux: False   #  False or input weight of aux loss
+  inner_loss_type: wt_ce
+  loss_type: wt_dc   # 'wt_dc',  'wt_ce'
+  loss_shot: avg
+  agg: cat
+  rmid: l34      # nr, l2, l4
+  all_lr: l
+
+  red_dim: False  # False or 512
+  wa: True       # True or False
+  proj_drop: 0.5
+  att_drop: 0.5
+
+Classifier:
+  dist: dot
+  cls_type: oooo
+
+EVALUATION:
+  shot: 5
+  random_shot: False
+  episodic: True
+  norm_feat: True
+  batch_size_val: 1
+  manual_seed: 2021
+  ckpt_used: best
+  test_num: 1000
+  FB_param_noise: 0
+  smoothing: True
+  n_runs: 1
+
+EXPERIMENT:
+  exp_name: dot_wa_aug_resize
+
+DISTRIBUTED:
+  gpus: [0]
