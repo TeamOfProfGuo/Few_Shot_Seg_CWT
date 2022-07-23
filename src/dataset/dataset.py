@@ -183,7 +183,6 @@ class EpisodicData(Dataset):
                  args: argparse.Namespace):
 
         self.shot = args.shot
-        self.args = args
         self.meta_aug = args.get('meta_aug', 0)
         self.random_shot = args.random_shot
         self.data_root = args.data_root
@@ -296,7 +295,7 @@ class EpisodicData(Dataset):
                     if fg_ratio <= 0.15:
                         meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
                     else:
-                        meta_trans = transform.Compose([transform.Resize(self.args.image_size)] + self.transform.segtransform[-2:])
+                        meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
                     new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])
 
                     support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)

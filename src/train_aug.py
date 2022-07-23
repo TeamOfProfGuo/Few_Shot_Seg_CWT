@@ -356,7 +356,7 @@ def validate_epoch(args, val_loader, model, Net):
     log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
         mIoU0, mIoU1, mIoU, runtime/60))
     for class_ in cls_union:
-        log("Class {} : {:.4f}".format(class_, IoU[class_]))
+        log("Class {} : {:.4f} for pred0".format(class_, IoU0[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
         val_iou_compare.win_cnt, val_iou_compare.cnt, val_iou_compare.diff_avg))
 
