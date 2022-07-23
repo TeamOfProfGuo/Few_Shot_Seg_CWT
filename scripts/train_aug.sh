@@ -10,7 +10,7 @@
 #SBATCH --mail-user=lg154@nyu.edu
 #SBATCH --output=aug.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
-#SBATCH --partition=v100,a100
+
 
 
 module purge

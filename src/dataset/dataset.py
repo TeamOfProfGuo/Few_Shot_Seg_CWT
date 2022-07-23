@@ -183,6 +183,7 @@ class EpisodicData(Dataset):
                  args: argparse.Namespace):
 
         self.shot = args.shot
+        self.args = args
         self.meta_aug = args.get('meta_aug', 0)
         self.random_shot = args.random_shot
         self.data_root = args.data_root
@@ -192,10 +193,6 @@ class EpisodicData(Dataset):
         else:
             self.data_list, self.sub_class_file_list = make_dataset(args.data_root, args.val_list, self.class_list)
         self.transform = dt_transform
-
-        if self.meta_aug > 1:
-            self.meta_trans_pre = transform.Compose([transform.RandomHorizontalFlip(), transform.RandScale([args.scale_min, args.scale_max]),
-                              transform.Crop([args.image_size, args.image_size], crop_type='rand', padding=[0 for x in args.mean], ignore_label=255)])
 
     def __len__(self):
         return len(self.data_list)
@@ -299,7 +296,7 @@ class EpisodicData(Dataset):
                     if fg_ratio <= 0.15:
                         meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
                     else:
-                        meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
+                        meta_trans = transform.Compose([transform.Resize(self.args.image_size)] + self.transform.segtransform[-2:])
                     new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])
 
                     support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)
