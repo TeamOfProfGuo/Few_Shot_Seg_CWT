@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'cca_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'cca1_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -132,23 +132,40 @@ def main(args: argparse.Namespace) -> None:
             s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
             # reset weight and change s_label to 16 way classification
-            reset_cls_wt(model.classifier, pre_cls_wt, args.num_classes_tr, idx_cls=subcls)
+            model.classifier.weight.data = pre_cls_wt
 
             model.eval()
             with torch.no_grad():
                 f_s, fs_lst = model.extract_features(spt_imgs)
+                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 out = model.classifier(f_s)  # [1, 16, 60, 60]
                 out = F.interpolate(out, size=(473, 473), mode='bilinear', align_corners=True)
 
-            s_label = reset_spt_label(s_label, pred=out, idx_cls=subcls)
+            s_label, cls_init_wt, num_cls = adapt_reset_spt_label(s_label, out, pre_cls_wt, args.num_classes_tr, sub_cls= subcls[0].item())
 
             # fine-tune classifier
-            model.increment_inner_loop(f_s, s_label, cls_idx=subcls, meta_train=True)
+            classifier = nn.Conv2d(args.bottleneck_dim, num_cls, kernel_size=1, bias=False)
+            if num_cls > 2:
+                classifier.weight.data[2:] = torch.cat([wt.unsqueeze(0) for wt in cls_init_wt], dim=0)
+            if args.get('load_bg', False):
+                classifier.weight.data[0] = pre_cls_wt[0]
+
+            # optimizer and loss function
+            optimizer = torch.optim.SGD(classifier.parameters(), lr=args.cls_lr)
+            criterion = SegLoss(loss_type=args.inner_loss_type, num_cls=num_cls, fg_idx=1)
+
+            # inner loop 学习 classifier的params
+            for index in range(args.adapt_iter):
+                pred_s_label = classifier(f_s)  # [n_shot, 2(cls), 60, 60]
+                pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:], mode='bilinear', align_corners=True)
+                s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+                optimizer.zero_grad()
+                s_loss.backward()
+                optimizer.step()
 
             # ============== Phase 2: Train the attention to update query score  ==============
             with torch.no_grad():
-                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-                pred_q0 = model.classifier(f_q)
+                pred_q0 = classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
             Trans.train()
@@ -166,7 +183,7 @@ def main(args: argparse.Namespace) -> None:
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
                     if args.loss_shot=='sum':
-                        pred_att = model.classifier(att_fq_single)
+                        pred_att = classifier(att_fq_single)
                         pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                         sum_loss = sum_loss + criterion(pred_att, q_label.long())
 
@@ -174,14 +191,14 @@ def main(args: argparse.Namespace) -> None:
                 att_fq = att_fq.mean(dim=0, keepdim=True)
                 fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
-                pred_q1 = model.classifier(att_fq)
+                pred_q1 = classifier(att_fq)
                 pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-                pred_q = model.classifier(fq)
+                pred_q = classifier(fq)
                 pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-                pred_q0 = compress_pred(pred_q0, subcls, 'lg')
-                pred_q1 = compress_pred(pred_q1, subcls, 'lg')
-                pred_q  = compress_pred(pred_q,  subcls, 'lg')
+                pred_q0 = compress_pred(pred_q0, idx_cls=1, input_type='lg')
+                pred_q1 = compress_pred(pred_q1, idx_cls=1, input_type='lg')
+                pred_q  = compress_pred(pred_q,  idx_cls=1, input_type='lg')
 
                 # Loss function: Dynamic class weights used for query image only during training
                 q_loss0 = criterion(pred_q0, q_label.long(), 'pb')
@@ -226,7 +243,7 @@ def main(args: argparse.Namespace) -> None:
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
-            if i% args.log_iter==0:
+            if i% args.log_iter==1:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
@@ -317,15 +334,14 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
         # =======================  fine-tune classifier  =======================
         classifier = nn.Conv2d(args.bottleneck_dim, num_cls, kernel_size=1, bias=False)
         if num_cls > 2:                                                                  # 没有更新 BF cls 的wt
-            cls_init_wt = torch.cat([wt.unsqueeze(0) for wt in cls_init_wt], dim=0)
-            classifier.weight.data[2:] = cls_init_wt
-        classifier = self.classifier if meta_train else self.val_classifier
-        num_cls = self.args.num_classes_tr if meta_train else self.args.num_classes_tr + 1
+            classifier.weight.data[2:] = torch.cat([wt.unsqueeze(0) for wt in cls_init_wt], dim=0)
+        if args.get('load_bg', False):
+            classifier.weight.data[0] = pre_cls_wt[0]
 
-        optimizer = torch.optim.SGD(classifier.parameters(), lr=self.args.cls_lr)
-        criterion = SegLoss(loss_type=self.args.inner_loss_type, num_cls=num_cls, fg_idx=cls_idx)
+        optimizer = torch.optim.SGD(classifier.parameters(), lr=args.cls_lr)
+        criterion = SegLoss(loss_type=args.inner_loss_type, num_cls=num_cls, fg_idx=1)   # 1 为前景， >1为背景中的object
 
-        for index in range(self.args.adapt_iter):
+        for index in range(args.adapt_iter):
             pred_s_label = classifier(f_s)  # [n_shot, 2(cls), 60, 60]
             pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:], mode='bilinear', align_corners=True)
             s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
@@ -335,8 +351,7 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
 
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
-
-            pred_q0 = model.val_classifier(f_q)
+            pred_q0 = classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
@@ -351,14 +366,14 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
             att_fq = att_fq.mean(dim=0, keepdim=True)
             fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
 
-            pd_q1 = model.val_classifier(att_fq)
+            pd_q1 = classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-            pd_q = model.val_classifier(fq)
+            pd_q = classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-        pred_q0 = compress_pred(pred_q0, idx_cls=args.num_classes_tr, input_type='lg')  # [1, 2, 473, 473]
-        pred_q1 = compress_pred(pred_q1, idx_cls=args.num_classes_tr, input_type='lg')
-        pred_q  = compress_pred(pred_q,  idx_cls=args.num_classes_tr, input_type='lg')
+        pred_q0 = compress_pred(pred_q0, idx_cls=1, input_type='lg')  # [1, 2, 473, 473]
+        pred_q1 = compress_pred(pred_q1, idx_cls=1, input_type='lg')
+        pred_q  = compress_pred(pred_q,  idx_cls=1, input_type='lg')
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
@@ -390,7 +405,7 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
     log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
         mIoU0, mIoU1, mIoU, runtime/60))
     for class_ in cls_union:
-        log("Class {} : {:.4f}".format(class_, IoU[class_]))
+        log("Class {} : {:.4f} for pred0".format(class_, IoU0[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
         val_iou_compare.win_cnt, val_iou_compare.cnt, val_iou_compare.diff_avg))
 

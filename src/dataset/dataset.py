@@ -288,7 +288,7 @@ class EpisodicData(Dataset):
         if self.transform is not None:
             qry_img, target = self.transform(image, label)    # transform query img
             for k in range(shot):                             # transform support img
-                if self.meta_aug>=1:
+                if self.meta_aug>1:
                     org_img, org_label = self.transform(support_image_list[k], support_label_list[k])  # flip and resize
                     label_freq = np.bincount(support_label_list[k].flatten())
                     fg_ratio = label_freq[1] / label_freq[0]

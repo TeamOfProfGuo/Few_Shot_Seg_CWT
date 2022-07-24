@@ -28,7 +28,7 @@ singularity exec --nv \
             --overlay /scratch/lg154/sseg/dataset/coco2014.sqf:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_cca --config config_files/${DATA}_cca.yaml \
+            python -m src.train_cca1 --config config_files/${DATA}_cca.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \

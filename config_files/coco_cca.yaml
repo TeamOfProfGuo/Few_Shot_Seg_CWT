@@ -72,6 +72,7 @@ MODEL:
 Classifier:
   dist: dot
   cls_type: oooo
+  load_bg: False  # whether to load BG weight from base classifier
 
 
 EVALUATION:

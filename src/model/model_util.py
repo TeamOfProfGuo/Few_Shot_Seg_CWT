@@ -100,6 +100,35 @@ def reset_spt_label(s_label, pred, idx_cls):
     s_label[torch.where(s_label == 1)] = idx_cls
     return s_label
 
+
+def adapt_reset_spt_label(s_label, pred, pre_cls_wt, num_classes_tr, sub_cls=None):
+    """modify s_label, BG will be replaced with the pseudo label from base cls, FG idx updated to idx for multi-way
+    adapt: num of classes 根据spt图片中cls数量决定
+    """
+    pred_mask = pred.argmax(1)        # [1, 473, 473]
+
+    if sub_cls > 0:                   # ONLY for meta train stage
+        pred_mask[ pred_mask == sub_cls ] = 0
+
+    s_label[s_label==1] = num_classes_tr   # FG to a temporary idx avoid conflict with base class id
+    idx_bg = torch.where(s_label == 0)
+    s_label[idx_bg] = pred_mask[idx_bg]
+
+    num_cls = 2
+    cls_init_wt = []
+    id_freq = torch.bincount(s_label.flatten())  # id: cls_idx val: freq  当前cls的id为16/num_classes_tr
+    for i in range(1, min(len(id_freq), num_classes_tr)):
+        if 0 < id_freq[i] <= 300 * len(s_label):
+            s_label[ s_label == i] = 0
+        elif id_freq[i] > 300 * len(s_label) and 0< i <num_classes_tr:  # 加一个新的cls
+            s_label[ s_label ==i ] = num_cls
+            num_cls += 1
+            cls_init_wt.append(pre_cls_wt[i])  # 存其 initial weight
+
+    s_label[s_label==num_classes_tr] = 1
+    return s_label, cls_init_wt, num_cls
+
+
 def compress_pred(pred, idx_cls, input_type='lg'):
     """combine all BG with Base class to compute binary loss. input_type: 'lg', 'pb' """
     if input_type in ['lg', 'lt']:
