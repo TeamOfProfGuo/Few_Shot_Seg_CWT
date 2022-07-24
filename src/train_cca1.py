@@ -144,7 +144,7 @@ def main(args: argparse.Namespace) -> None:
             s_label, cls_init_wt, num_cls = adapt_reset_spt_label(s_label, out, pre_cls_wt, args.num_classes_tr, sub_cls= subcls[0].item())
 
             # fine-tune classifier
-            classifier = nn.Conv2d(args.bottleneck_dim, num_cls, kernel_size=1, bias=False)
+            classifier = nn.Conv2d(args.bottleneck_dim, num_cls, kernel_size=1, bias=False).cuda()
             if num_cls > 2:
                 classifier.weight.data[2:] = torch.cat([wt.unsqueeze(0) for wt in cls_init_wt], dim=0)
             if args.get('load_bg', False):
@@ -332,7 +332,7 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
         s_label, cls_init_wt, num_cls = adapt_reset_spt_label(s_label, out, pre_cls_wt, num_classes_tr=args.num_classes_tr)
 
         # =======================  fine-tune classifier  =======================
-        classifier = nn.Conv2d(args.bottleneck_dim, num_cls, kernel_size=1, bias=False)
+        classifier = nn.Conv2d(args.bottleneck_dim, num_cls, kernel_size=1, bias=False).cuda()
         if num_cls > 2:                                                                  # 没有更新 BF cls 的wt
             classifier.weight.data[2:] = torch.cat([wt.unsqueeze(0) for wt in cls_init_wt], dim=0)
         if args.get('load_bg', False):
