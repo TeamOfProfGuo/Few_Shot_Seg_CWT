@@ -107,7 +107,7 @@ def adapt_reset_spt_label(s_label, pred, pre_cls_wt, num_classes_tr, sub_cls=Non
     """
     pred_mask = pred.argmax(1)        # [1, 473, 473]
 
-    if sub_cls > 0:                   # ONLY for meta train stage
+    if sub_cls is not None and sub_cls > 0:                   # ONLY for meta train stage
         pred_mask[ pred_mask == sub_cls ] = 0
 
     s_label[s_label==1] = num_classes_tr   # FG to a temporary idx avoid conflict with base class id
