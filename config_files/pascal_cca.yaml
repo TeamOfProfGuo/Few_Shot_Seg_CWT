@@ -60,7 +60,7 @@ MODEL:
   temp: 20.0
   att_wt: 0.2
   aux: False   #  False or input weight of aux loss
-  inner_loss_type: ce   # wt_ce
+  inner_loss_type: wt_ce   # wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   loss_shot: avg
   agg: cat
@@ -92,7 +92,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_wa_Lwt_ce
+  exp_name: dot_wa_debug
 
 DISTRIBUTED:
   gpus: [0]
