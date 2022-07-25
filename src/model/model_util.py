@@ -73,6 +73,31 @@ def weighted_dice_loss(prediction, target_seg, weighted_val=1.0, reduction="sum"
     return loss
 
 
+class Adatp_SegLoss(nn.Module):
+    def __init__(self, num_cls=2, fg_idx=1, tp=1.0):   # loss_type ['wt_ce', 'wt_dc']
+        super().__init__()
+        self.num_cls = num_cls
+        self.fg_idx = fg_idx
+        self.tp = tp
+
+    def forward(self, prediction, target_seg, ):
+        """whether prediction has already processed by CrossEntropy: 'pb':prob, 'lt':lg"""
+        return weighted_adpt_ce_loss(prediction, target_seg, ignore_index=255, num_cls=self.num_cls, fg_idx=self.fg_idx, tp=self.tp)
+
+
+def weighted_adpt_ce_loss(pred, label, ignore_index=255, num_cls=2, fg_idx=1, tp=1.0):
+    count = torch.bincount(label.view(-1))
+    fg_cnt = count[fg_idx]
+    bg_cnt = (torch.sum(count) - fg_cnt) if len(count) <= 255 else (torch.sum(count) - count[255] - fg_cnt)  # all pixels not belonging to current cls CONSIDERED as BG
+    weight = torch.tensor([1.0] * num_cls)
+    weight[fg_idx] = (bg_cnt / fg_cnt)**tp
+    if torch.cuda.is_available():
+        weight = weight.cuda()
+    criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index)
+    return criterion(pred, label)
+
+
+
 def get_corr(q, k):
     bs, ch, height, width = q.shape
     proj_q = q.view(bs, ch, height * width).permute(0, 2, 1)  # [1, ch, hw] -> [1, hw, ch]

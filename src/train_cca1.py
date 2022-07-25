@@ -12,7 +12,7 @@ import torch.backends.cudnn as cudnn
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
-from .model import MMN, SegLoss, reset_cls_wt, reset_spt_label, compress_pred, adapt_reset_spt_label
+from .model import MMN, SegLoss, Adatp_SegLoss, reset_cls_wt, reset_spt_label, compress_pred, adapt_reset_spt_label
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
@@ -341,8 +341,9 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
         if args.get('load_bg', False):
             classifier.weight.data[0] = pre_cls_wt[0]
 
+        tp = args.get('tp', 1.0) if num_cls>2 else 1.0
         optimizer = torch.optim.SGD(classifier.parameters(), lr=args.cls_lr)
-        criterion = SegLoss(loss_type=args.inner_loss_type, num_cls=num_cls, fg_idx=1)   # 1 为前景， >1为背景中的object
+        criterion = Adatp_SegLoss(num_cls=num_cls, fg_idx=1, tp=tp)   # 1 为前景， >1为背景中的object
 
         for index in range(args.adapt_iter):
             pred_s_label = classifier(f_s)  # [n_shot, 2(cls), 60, 60]
