@@ -303,6 +303,7 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
     val_iou_compare = CompareMeter()
 
     under_cnt = 0
+    adapt_cnt = 0
 
     for e in range(args.test_num):
 
@@ -397,12 +398,14 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
         val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
 
         gt_freq = torch.bincount(q_label.flatten())
-        print('iter {} subcls {} num_cls {}: iouf0 {:.4f} ioub0 {:.4f} fg_pxl {} gt_pxl {}'.format(
+        log('iter {} subcls {} num_cls {}: iouf0 {:.4f} ioub0 {:.4f} fg_pxl {} gt_pxl {}'.format(
             e, subcls[0].item(), num_cls, iouf0, ioub0, pd_freq[1] if len(pd_freq)>1 else 0, gt_freq[1]
         ) + '======' * (num_cls-2))
 
-        if len(pd_freq)==1 or (len(pd_freq)>1 and pd_freq[1] < gt_freq[1]):
+        if len(pd_freq)==1 or (len(pd_freq)>1 and pd_freq[1] < gt_freq[1]) and num_cls > 2:
             under_cnt += 1
+        if num_cls > 2:
+            adapt_cnt += 1
 
         criterion_standard = nn.NLLLoss(ignore_index=255)
         loss1 = criterion_standard(torch.log(pred_q1), q_label)
@@ -412,8 +415,8 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {:.4f} ({:.4f}) --- under cnt {}'.format(
-                iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter.val, loss_meter.avg, under_cnt))
+            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {:.4f} ({:.4f}) --- under cnt {}/adapt_cnt {}'.format(
+                iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter.val, loss_meter.avg, under_cnt, adapt_cnt))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
