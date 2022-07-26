@@ -35,19 +35,18 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'cca_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+    sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_name}'
     sv_path = os.path.join('./results', sv_path)
-    ensure_path(sv_path)
+    ensure_path(sv_path)                  # 确定path合法并且询问是否要清除先前的folder
     set_log_path(path=sv_path)
-    log('save_path {}'.format(sv_path))
+    log(f'save_path {sv_path}')
 
     log(args)
 
     if args.manual_seed is not None:
-        cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
-        cudnn.deterministic = True
-        random.seed(args.manual_seed)
+        cudnn.benchmark = False           # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
+        cudnn.deterministic = True        # 为True的话可以让torch的卷积算法用默认算法
+        random.seed(args.manual_seed)     # 设置seed来让实验reproducible
         np.random.seed(args.manual_seed)
         torch.manual_seed(args.manual_seed)
         torch.cuda.manual_seed(args.manual_seed)

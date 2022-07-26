@@ -190,8 +190,8 @@ class RandScale(object):
     # Randomly resize image & label with scale factor in [scale_min, scale_max]
     def __init__(self, scale, aspect_ratio=None, fixed_size=None, padding=None):
         assert (isinstance(scale, collections.Iterable) and len(scale) == 2)
-        if isinstance(scale, collections.Iterable) and len(scale) == 2 \
-                and isinstance(scale[0], numbers.Number) and isinstance(scale[1], numbers.Number) \
+        if  isinstance(scale[0], numbers.Number) \
+                and isinstance(scale[1], numbers.Number) \
                 and 0 < scale[0] < scale[1]:
             self.scale = scale               # scale = (0.5, 1.5)
         else:
