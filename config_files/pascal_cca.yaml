@@ -77,7 +77,7 @@ MODEL:
 Classifier:
   dist: dot
   cls_type: oooo
-  tp: 1.1   # 增加 FG weight
+  tp: 1.0  # 增加 FG weight
 
 EVALUATION:
   shot: 1
@@ -93,7 +93,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_wa_argmax
+  exp_name: dot_wa_argmax2
 
 DISTRIBUTED:
   gpus: [0]

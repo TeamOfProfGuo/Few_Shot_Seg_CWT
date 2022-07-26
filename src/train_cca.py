@@ -283,6 +283,10 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
     cls_union1 = defaultdict(int)
     IoU1 = defaultdict(float)
 
+    cls_intersection2 = defaultdict(int)  # Default value is 0
+    cls_union2 = defaultdict(int)
+    IoU2 = defaultdict(float)
+
     val_iou_compare = CompareMeter()
 
     for e in range(args.test_num):
@@ -340,17 +344,19 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
             pd_q = model.val_classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
+        pred_q2 = F.softmax(pred_q0, dim=1)*(1 - args.att_wt) + F.softmax(pred_q1, dim=1)*args.att_wt
         com_pred_q1 = compress_pred(pred_q1, idx_cls=args.num_classes_tr, input_type='lg')
 
         pred_q0 = pred2bmask(pred_q0, idx_cls=args.num_classes_tr)
         pred_q1 = pred2bmask(pred_q1, idx_cls=args.num_classes_tr)
-        pred_q  = pred2bmask(pred_q, idx_cls=args.num_classes_tr)
+        pred_q  = pred2bmask(pred_q,  idx_cls=args.num_classes_tr)
+        pred_q2 = pred2bmask(pred_q2, idx_cls=args.num_classes_tr)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q)] ):
+                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection2, cls_union2, IoU2, pred_q2)] ):
             intersection, union, target = intersectionAndUnionGPU(pred, q_label, 2, 255)     # 已经做过argmax
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
@@ -368,13 +374,14 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
+            mIoU2 = np.mean([IoU2[i] for i in IoU2])
+            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} mIoU2 {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                iter_num, args.test_num, mIoU0, mIoU1, mIoU, mIoU2, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
-        mIoU0, mIoU1, mIoU, runtime/60))
+    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} mIoU2 {:.4f} | time used {:.1f}m.'.format(
+        mIoU0, mIoU1, mIoU, mIoU2, runtime/60))
     for class_ in cls_union:
         log("Class {} : {:.4f}".format(class_, IoU[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(

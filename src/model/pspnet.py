@@ -8,9 +8,8 @@ from functools import reduce
 import torch.nn.functional as F
 from .resnet import resnet50, resnet101
 from .vgg import vgg16_bn
-from .model_util import get_corr, get_ig_mask
+from .model_util import get_corr, get_ig_mask, Adapt_SegLoss, SegLoss
 from torch.nn.utils.weight_norm import WeightNorm
-from .model_util import SegLoss
 
 
 def get_model(args) -> nn.Module:
@@ -211,7 +210,7 @@ class PSPNet(nn.Module):
         num_cls = self.args.num_classes_tr if meta_train else self.args.num_classes_tr+1
 
         optimizer = torch.optim.SGD(classifier.parameters(), lr=self.args.cls_lr)
-        criterion = SegLoss(loss_type=self.args.inner_loss_type, num_cls=num_cls, fg_idx=cls_idx)
+        criterion = Adapt_SegLoss(num_cls=num_cls, fg_idx=cls_idx, tp=self.args.tp)
 
         for index in range(self.args.adapt_iter):
             pred_s_label = classifier(f_s)  # [n_shot, 2(cls), 60, 60]
