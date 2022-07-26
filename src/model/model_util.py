@@ -167,7 +167,7 @@ def compress_pred(pred, idx_cls, input_type='lg'):
 
 def pred2bmask(pred, idx_cls=1):
     pred = pred.argmax(dim=1)
-    for idx in pred.unique().numpy():
+    for idx in pred.unique():
         if idx>0 and idx!= idx_cls:
             pred[pred==idx] = 0
 
