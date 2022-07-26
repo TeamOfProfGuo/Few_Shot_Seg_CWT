@@ -46,6 +46,7 @@ def main(args: argparse.Namespace) -> None:
         date = group = info = None
         save_path = 'test'
 
+    sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_name}'
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)                  # 确定path合法并且询问是否要清除先前的folder
     set_log_path(path=sv_path)
