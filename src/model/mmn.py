@@ -39,7 +39,7 @@ class MMN(nn.Module):
             match_ch = sum([self.nbottlenecks[i-1] if str(i) in str(args.all_lr) else 1 for i in self.bid_lst])
         self.corr_net = MatchNet(temp=args.temp, cv_type= args.get('conv4d', 'red'), sce=False, cyc=False, sym_mode=True, in_channel=match_ch)
 
-    def forward(self, fq_lst, fs_lst, f_q, f_s):   # fq_lst: dict{bid: [bottleneck layers]}
+    def forward(self, fq_lst, fs_lst, f_q, f_s, ret_attn=False):   # fq_lst: dict{bid: [bottleneck layers]}
         B, ch, h, w = f_s.shape
 
         corr_lst = []
@@ -62,10 +62,12 @@ class MMN(nn.Module):
         if self.agg == 'sum':
             corr4d = torch.sum(corr4d, dim=1, keepdim=True)  # [B, 1, h, w, h, w]
 
-        att_fq = self.corr_net.corr_forward(corr4d, v=f_s)   # [shot, 512, h, w]
+        attn, att_fq = self.corr_net.corr_forward(corr4d, v=f_s, ret_attn=True)   # [shot, 512, h, w]
         att_fq = att_fq.mean(dim=0, keepdim=True)
         fq = f_q * (1-self.args.att_wt) + att_fq * self.args.att_wt
 
+        if ret_attn:
+            return attn, fq, att_fq
         return fq, att_fq
 
     def forward_mmn(self, fq_lst, fs_lst, f_q, f_s,):

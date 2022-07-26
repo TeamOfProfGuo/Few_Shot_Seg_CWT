@@ -139,7 +139,7 @@ class MatchNet(nn.Module):
         else:
             return weighted_v
 
-    def corr_forward(self, corr4d, v):  # ig_mask [1, 3600]
+    def corr_forward(self, corr4d, v, ret_attn=False):  # ig_mask [1, 3600]
         if v.dim() == 4:
             v = v.flatten(2)
         B, ch, h, w, h, w = corr4d.shape
@@ -152,6 +152,8 @@ class MatchNet(nn.Module):
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
         weighted_v = weighted_v.view(B, -1, h, w)
 
+        if ret_attn:
+            return attn, weighted_v
         return weighted_v  # [B, 512, h, w]
 
     def run_match_model(self,corr4d):
