@@ -226,7 +226,7 @@ def main(args: argparse.Namespace) -> None:
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
-            if i% args.log_iter==0:
+            if i% args.log_iter==1:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
