@@ -72,6 +72,7 @@ MODEL:
 Classifier:
   dist: dot
   cls_type: oooo
+  tp: 1.0
   load_bg: False  # whether to load BG weight from base classifier
 
 
@@ -89,7 +90,7 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: l34_wa_wt3
+  exp_name: l34_wa_argmax
 
 DISTRIBUTED:
   gpus: [0]
