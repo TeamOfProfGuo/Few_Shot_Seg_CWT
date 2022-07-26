@@ -153,7 +153,7 @@ class MatchNet(nn.Module):
         weighted_v = weighted_v.view(B, -1, h, w)
 
         if ret_attn:
-            return attn, weighted_v
+            return corr2d, weighted_v
         return weighted_v  # [B, 512, h, w]
 
     def run_match_model(self,corr4d):

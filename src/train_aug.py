@@ -149,9 +149,9 @@ def main(args: argparse.Namespace) -> None:
             att_fq = []
             sum_loss=0
             with torch.cuda.amp.autocast(enabled=use_amp):
-                for k in range(args.shot):
-                    single_fs_lst = {key: [ve[k*args.meta_aug:k*args.meta_aug + 1] for ve in value] for key, value in fs_lst.items()}   # only compare to org img
-                    single_f_s = f_s[k*args.meta_aug:k*args.meta_aug + 1]
+                for k in range(args.shot * args.meta_aug):
+                    single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}   # only compare to org img
+                    single_f_s = f_s[k:k + 1]
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
@@ -321,12 +321,13 @@ def validate_epoch(args, val_loader, model, Net):
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
             pd_q = model.classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pred_q2 = F.softmax(pred_q0, dim=1)*(1 - args.att_wt) + F.softmax(pred_q1, dim=1)*args.att_wt
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q), ] ):
+                 (cls_intersection, cls_union, IoU, pred_q), (cls_intersection2, cls_union2, IoU2, pred_q2)] ):
             intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
@@ -334,8 +335,6 @@ def validate_epoch(args, val_loader, model, Net):
             IoU_[curr_cls] = cls_intersection_[curr_cls] / (cls_union_[curr_cls] + 1e-10)   # cls wise IoU
             if id==0: iouf0 = intersection[1]/union[1]     # fg IoU for the current episode
             elif id==1: iouf1 = intersection[1]/union[1]
-
-
 
         val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
 
@@ -348,13 +347,14 @@ def validate_epoch(args, val_loader, model, Net):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            log('==> Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
+            mIoU2 = np.mean([IoU2[i] for i in IoU2])
+            log('==> Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} mIoU2 {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                iter_num, args.test_num, mIoU0, mIoU1, mIoU, mIoU2, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
     mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
-        mIoU0, mIoU1, mIoU, runtime/60))
+    log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} mIoU2 {:.4f} | time used {:.1f}m.'.format(
+        mIoU0, mIoU1, mIoU, mIoU2, runtime/60))
     for class_ in cls_union:
         log("Class {} : {:.4f} for pred0".format(class_, IoU0[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
