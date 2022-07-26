@@ -93,7 +93,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_wa_tp11
+  exp_name: dot_wa_argmax
 
 DISTRIBUTED:
   gpus: [0]

@@ -12,7 +12,7 @@ import torch.backends.cudnn as cudnn
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
-from .model import MMN, SegLoss, reset_cls_wt, reset_spt_label, compress_pred
+from .model import MMN, SegLoss, reset_cls_wt, reset_spt_label, compress_pred, pred2bmask
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
@@ -340,16 +340,18 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
             pd_q = model.val_classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-        pred_q0 = compress_pred(pred_q0, idx_cls=args.num_classes_tr, input_type='lg')  # [1, 2, 473, 473]
-        pred_q1 = compress_pred(pred_q1, idx_cls=args.num_classes_tr, input_type='lg')
-        pred_q  = compress_pred(pred_q,  idx_cls=args.num_classes_tr, input_type='lg')
+        com_pred_q1 = compress_pred(pred_q1, idx_cls=args.num_classes_tr, input_type='lg')
+
+        pred_q0 = pred2bmask(pred_q0, idx_cls=args.num_classes_tr)
+        pred_q1 = pred2bmask(pred_q1, idx_cls=args.num_classes_tr)
+        pred_q  = pred2bmask(pred_q, idx_cls=args.num_classes_tr)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
                  (cls_intersection, cls_union, IoU, pred_q)] ):
-            intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
+            intersection, union, target = intersectionAndUnionGPU(pred, q_label, 2, 255)     # 已经做过argmax
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
             cls_union_[curr_cls] += union[1]                # only consider the FG
@@ -359,7 +361,7 @@ def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
         val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
 
         criterion_standard = nn.NLLLoss(ignore_index=255)
-        loss1 = criterion_standard(torch.log(pred_q1), q_label)
+        loss1 = criterion_standard(torch.log(com_pred_q1), q_label)
         loss_meter.update(loss1.item())
 
         if (iter_num % 100 == 0):

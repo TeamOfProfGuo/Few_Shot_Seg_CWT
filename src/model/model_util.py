@@ -73,7 +73,7 @@ def weighted_dice_loss(prediction, target_seg, weighted_val=1.0, reduction="sum"
     return loss
 
 
-class Adatp_SegLoss(nn.Module):
+class Adapt_SegLoss(nn.Module):
     def __init__(self, num_cls=2, fg_idx=1, tp=1.0):   # loss_type ['wt_ce', 'wt_dc']
         super().__init__()
         self.num_cls = num_cls
@@ -164,6 +164,15 @@ def compress_pred(pred, idx_cls, input_type='lg'):
     new[:, 1, :, :] = pred[:, idx_cls, :, :]
     new[:, 0, :, :] = 1.0 - new[:, 1, :, :]
     return new
+
+def pred2bmask(pred, idx_cls=1):
+    pred = pred.argmax(dim=1)
+    for idx in pred.unique().numpy():
+        if idx>0 and idx!= idx_cls:
+            pred[pred==idx] = 0
+
+    pred[pred==idx_cls] =1
+    return pred
 
 
 def get_ig_mask(sim, s_label, q_label, pd_q0, pd_s): # sim [1, q_hw, k_hw]
