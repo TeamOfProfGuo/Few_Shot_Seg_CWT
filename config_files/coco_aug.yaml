@@ -20,6 +20,8 @@ DATA:
   rot_max: 10
   augmentations: ['resize_np']
 
+  meta_aug: 1  # default is 1/can not be 0
+
 TRAIN:
   ckpt_path: checkpoints/
   batch_size: 1
