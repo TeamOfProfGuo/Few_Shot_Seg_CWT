@@ -188,7 +188,7 @@ class Resize_np(object):
 
 class RandScale(object):
     # Randomly resize image & label with scale factor in [scale_min, scale_max]
-    def __init__(self, scale, aspect_ratio=None):
+    def __init__(self, scale, aspect_ratio=None, fixed_size=None, padding=None):
         assert (isinstance(scale, collections.Iterable) and len(scale) == 2)
         if isinstance(scale, collections.Iterable) and len(scale) == 2 \
                 and isinstance(scale[0], numbers.Number) and isinstance(scale[1], numbers.Number) \
@@ -196,6 +196,7 @@ class RandScale(object):
             self.scale = scale               # scale = (0.5, 1.5)
         else:
             raise (RuntimeError("segtransform.RandScale() scale param error.\n"))
+
         if aspect_ratio is None:
             self.aspect_ratio = aspect_ratio
         elif isinstance(aspect_ratio, collections.Iterable) \
@@ -206,6 +207,8 @@ class RandScale(object):
             self.aspect_ratio = aspect_ratio
         else:
             raise (RuntimeError("segtransform.RandScale() aspect_ratio param error.\n"))
+
+        self.fixed_size, self.padding = fixed_size, padding
 
     def __call__(self, image, label):
         temp_scale = self.scale[0] + (self.scale[1] - self.scale[0]) * random.random()  # 从 scale[0] 到 scale[1]随机选取一个scale
@@ -219,6 +222,22 @@ class RandScale(object):
                            interpolation=cv2.INTER_LINEAR)
         label = cv2.resize(label, None, fx=scale_factor_x, fy=scale_factor_y,
                            interpolation=cv2.INTER_NEAREST)
+
+        if self.fixed_size is not None and self.fixed_size>0:
+            new_h, new_w, _ = image.shape
+
+            back_crop = np.zeros((self.fixed_size, self.fixed_size, 3))
+            if self.padding:
+                back_crop[:, :, 0] = self.padding[0]
+                back_crop[:, :, 1] = self.padding[1]
+                back_crop[:, :, 2] = self.padding[2]
+            back_crop[:new_h, :new_w, :] = image
+            image = back_crop
+
+            back_crop_mask = np.ones((self.fixed_size, self.fixed_size)) * 255
+            back_crop_mask[:new_h, :new_w] = label
+            label = back_crop_mask
+
         return image, label
 
 

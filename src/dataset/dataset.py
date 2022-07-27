@@ -185,6 +185,7 @@ class EpisodicData(Dataset):
                  args: argparse.Namespace):
 
         self.shot = args.shot
+        self.padding = [v*255 for v in args.mean] if args.get('padding')=='avg' else None
         self.meta_aug = args.get('meta_aug', 0)
         self.random_shot = args.random_shot
         self.data_root = args.data_root
@@ -301,7 +302,8 @@ class EpisodicData(Dataset):
                         meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
                     else:
                         scale = 473/max(support_label_list[k].shape) * 0.7
-                        meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale+0.1))] + self.transform.segtransform[-3:])
+                        meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale+0.1), fixed_size=473, padding=self.padding)] +
+                                                       self.transform.segtransform[-2:])
                     new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])
 
                     support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)
