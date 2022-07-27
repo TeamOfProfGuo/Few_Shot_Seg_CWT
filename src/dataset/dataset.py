@@ -32,7 +32,7 @@ def get_train_loader(args, episodic=True, return_path=False):
             [args.image_size, args.image_size], crop_type='rand',
             padding=[0 for x in args.mean], ignore_label=255
         ),
-        'resize': transform.Resize(args.image_size),
+        'resize': transform.Resize(args.image_size, padding=255*args.mean),                          # 改了padding
         'resize_np': transform.Resize_np(size=(args.image_size, args.image_size))
     }
 
@@ -292,8 +292,11 @@ class EpisodicData(Dataset):
                     org_img, org_label = self.transform(support_image_list[k], support_label_list[k])  # flip and resize
                     label_freq = np.bincount(support_label_list[k].flatten())
                     fg_ratio = label_freq[1] / label_freq[0]
+
                     if fg_ratio <= 0.15:
                         meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
+                    elif 0.15<fg_ratio<0.3:
+                        meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
                     else:
                         meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
                     new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])

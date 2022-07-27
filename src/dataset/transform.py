@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 import random
 import math
 import numpy as np
@@ -124,7 +126,7 @@ class Resize(object):
                 new_w = test_size
 
             if new_h % 8 != 0:
-                new_h = (int(new_h / 8)) * 8
+                new_h = (int(new_h / 8)) * 8   # 为什么新的长宽是8的倍数
             else:
                 new_h = new_h
             if new_w % 8 != 0:
@@ -206,7 +208,7 @@ class RandScale(object):
             raise (RuntimeError("segtransform.RandScale() aspect_ratio param error.\n"))
 
     def __call__(self, image, label):
-        temp_scale = self.scale[0] + (self.scale[1] - self.scale[0]) * random.random()
+        temp_scale = self.scale[0] + (self.scale[1] - self.scale[0]) * random.random()  # 从 scale[0] 到 scale[1]随机选取一个scale
         temp_aspect_ratio = 1.0
         if self.aspect_ratio is not None:
             temp_aspect_ratio = self.aspect_ratio[0] + (self.aspect_ratio[1] - self.aspect_ratio[0]) * random.random()
@@ -397,6 +399,54 @@ class RandomGaussianBlur(object):
         return image, label
 
 
+class ColorJitter(object):
+    def __init__(self, cj_type='b'):
+        self.cj_type = cj_type
+
+    def __call__(self, img, label):
+        '''
+        ### Different Color Jitter ###
+        img: image
+        cj_type: {b: brightness, s: saturation, c: constast}
+        '''
+        if self.cj_type == "b":
+            # value = random.randint(-50, 50)
+            value = np.random.choice(np.array([-50, -40, -30, 30, 40, 50]))
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)    # Hue, Saturation, and Value (Brightness)
+            if value >= 0:
+                lim = 255 - value
+                v[v > lim] = 255
+                v[v <= lim] += value
+            else:
+                lim = np.absolute(value)
+                v[v < lim] = 0
+                v[v >= lim] -= np.absolute(value)
+
+            final_hsv = cv2.merge((h, s, v))
+            img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+
+        elif self.cj_type == "s":
+            # value = random.randint(-50, 50)
+            value = np.random.choice(np.array([0.5, 0.75, 1.25, 1.5]))
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)
+            s *= value
+
+            final_hsv = cv2.merge((h, s, v))
+            img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+
+        elif self.cj_type == "c":
+            brightness = 10
+            contrast = random.randint(40, 100)
+            dummy = np.int16(img)
+            dummy = dummy * (contrast / 127 + 1) - contrast + brightness
+            img = np.clip(dummy, 0, 255)
+
+        return img, label
+
+
+
 class Contrast(object):
     def __init__(self, v=0.9, max_v=0.05, bias=0):
         self.v = _float_parameter(v, max_v) + bias
@@ -445,4 +495,4 @@ class BGR2RGB(object):
     # Converts image from BGR order to RGB order, for model initialized from Pytorch
     def __call__(self, image, label):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        return image, labe
+        return image, label
