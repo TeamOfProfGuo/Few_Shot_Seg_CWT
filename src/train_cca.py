@@ -57,7 +57,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
+                'split={}/pspnet_{}{}/without_bias.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
