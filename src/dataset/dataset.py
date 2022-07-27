@@ -19,6 +19,7 @@ def get_train_loader(args, episodic=True, return_path=False):
         Build the train loader. This is a episodic loader.
     """
     assert args.train_split in [0, 1, 2, 3]
+    padding = [v*255 for v in args.mean] if args.get('padding')=='avg' else None
     aug_dic = {
         'randscale': transform.RandScale([args.scale_min, args.scale_max]),
         'randrotate': transform.RandRotate(
@@ -32,7 +33,7 @@ def get_train_loader(args, episodic=True, return_path=False):
             [args.image_size, args.image_size], crop_type='rand',
             padding=[0 for x in args.mean], ignore_label=255
         ),
-        'resize': transform.Resize(args.image_size, padding=255*args.mean),                          # 改了padding
+        'resize': transform.Resize(args.image_size, padding=padding),                          # 改了padding
         'resize_np': transform.Resize_np(size=(args.image_size, args.image_size))
     }
 
@@ -75,10 +76,11 @@ def get_val_loader(args, episodic=True, return_path=False):
     assert args.test_split in [0, 1, 2, 3, -1, 'default']
 
     val_trans = [transform.ToTensor(), transform.Normalize(mean=args.mean, std=args.std)]
-    if 'resize_np' in args.augmentations:
+    if 'resize_np' in args.augmentations:                                                     # base aug 只有 resize
         val_trans = [transform.Resize_np(size=(args.image_size, args.image_size))] + val_trans
     else:
-        val_trans = [transform.Resize(args.image_size)] + val_trans
+        padding = [v*255 for v in args.mean] if args.get('padding')=='avg' else None
+        val_trans = [transform.Resize(args.image_size, padding=padding)] + val_trans
     val_transform = transform.Compose(val_trans)
     val_sampler = None
     split_classes = get_split_classes(args)     # 返回coco和pascal所有4个split, dict of dict
@@ -296,9 +298,10 @@ class EpisodicData(Dataset):
                     if fg_ratio <= 0.15:
                         meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
                     elif 0.15<fg_ratio<0.3:
-                        meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
+                        meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
                     else:
-                        meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
+                        scale = 473/max(support_label_list[k].shape) * 0.7
+                        meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale+0.1))] + self.transform.segtransform[-3:])
                     new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])
 
                     support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)

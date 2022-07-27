@@ -118,7 +118,7 @@ class Resize(object):
         def find_new_hw(ori_h, ori_w, test_size):
             if ori_h >= ori_w:
                 ratio = test_size * 1.0 / ori_h
-                new_h = test_size
+                new_h = test_size                 # test_size is target_size
                 new_w = int(ori_w * ratio)
             elif ori_w > ori_h:
                 ratio = test_size * 1.0 / ori_w
@@ -193,7 +193,7 @@ class RandScale(object):
         if isinstance(scale, collections.Iterable) and len(scale) == 2 \
                 and isinstance(scale[0], numbers.Number) and isinstance(scale[1], numbers.Number) \
                 and 0 < scale[0] < scale[1]:
-            self.scale = scale
+            self.scale = scale               # scale = (0.5, 1.5)
         else:
             raise (RuntimeError("segtransform.RandScale() scale param error.\n"))
         if aspect_ratio is None:
