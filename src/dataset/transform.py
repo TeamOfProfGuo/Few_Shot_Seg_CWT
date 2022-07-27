@@ -492,7 +492,6 @@ class ColorAug(object):
         image = np.array(image)
         return image, label
 
-
 class Contrast(object):
     def __init__(self, v=0.9, max_v=0.05, bias=0):
         self.v = _float_parameter(v, max_v) + bias

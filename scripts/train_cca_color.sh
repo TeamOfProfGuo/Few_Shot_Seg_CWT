@@ -27,7 +27,7 @@ singularity exec --nv \
             --overlay /scratch/xl3139/overlay-25GB-500K-PROTR.ext3:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_cca --config config_files/${DATA}_cca.yaml \
+            python -m src.train_cca --config config_files/${DATA}_cca_color.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \

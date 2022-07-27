@@ -33,8 +33,9 @@ def get_train_loader(args, episodic=True, return_path=False):
             [args.image_size, args.image_size], crop_type='rand',
             padding=[0 for x in args.mean], ignore_label=255
         ),
-        'resize': transform.Resize(args.image_size, padding=padding),                          # 改了padding
-        'resize_np': transform.Resize_np(size=(args.image_size, args.image_size))
+        'resize': transform.Resize(args.image_size),
+        'resize_np': transform.Resize_np(size=(args.image_size, args.image_size)),
+        'color_aug': transform.ColorAug(args.brightness, args.contrast, args.saturation, args.hue)
     }
 
     train_transform = [aug_dic[name] for name in args.augmentations]
