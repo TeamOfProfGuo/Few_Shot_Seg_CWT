@@ -296,16 +296,7 @@ class EpisodicData(Dataset):
                     label_freq = np.bincount(support_label_list[k].flatten())
                     fg_ratio = label_freq[1] / label_freq[0]
 
-                    if fg_ratio <= 0.15:
-                        meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
-                    elif 0.15<fg_ratio<0.3:
-                        meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
-                    else:
-                        scale = 473/max(support_label_list[k].shape) * 0.7
-                        meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale+0.1), fixed_size=473, padding=self.padding)] +
-                                                       self.transform.segtransform[-2:])
-                    new_img, new_label = meta_trans(support_image_list[k], support_label_list[k])
-
+                    new_img, new_label = self.get_aug_data0(fg_ratio, support_image_list[k], support_label_list[k])
                     support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)
                     support_label_list[k] = torch.cat([org_label.unsqueeze(0), new_label.unsqueeze(0)], dim=0)
 
@@ -320,6 +311,31 @@ class EpisodicData(Dataset):
 
         return qry_img, target, spprt_imgs, spprt_labels, subcls_list, \
                [support_image_path_list, support_labels], [image_path, label]
-
         # subcls_list  返回的是 选取的class在所有meta train cls list 中的index+1/rank
+
+    def get_aug_data0(self, fg_ratio, support_image, support_label):
+        if fg_ratio <= 0.15:
+            meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
+        elif 0.15 < fg_ratio < 0.3:
+            meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
+        else:
+            scale = 473 / max(support_label.shape) * 0.7
+            meta_trans = transform.Compose(
+                [transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +
+                self.transform.segtransform[-2:])
+        new_img, new_label = meta_trans(support_image, support_label)
+        return new_img, new_label
+
+    def get_aug_data1(self, fg_ratio, support_image, support_label):
+        if fg_ratio <= 0.15:
+            meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
+        elif 0.15 < fg_ratio < 0.3:
+            meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
+        else:
+            scale = 473 / max(support_label.shape) * 0.7
+            meta_trans = transform.Compose(
+                [transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +
+                self.transform.segtransform[-2:])
+        new_img, new_label = meta_trans(support_image, support_label)
+        return new_img, new_label
 
