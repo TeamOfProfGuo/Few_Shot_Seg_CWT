@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'aug_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'count_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -53,56 +53,11 @@ def main(args: argparse.Namespace) -> None:
         torch.cuda.manual_seed(args.manual_seed)
         torch.cuda.manual_seed_all(args.manual_seed)
 
-    # ====== Model + Optimizer ======
-    model = get_model(args).cuda()
-
-    if args.resume_weights:
-        fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
-        if os.path.isfile(fname):
-            log("=> loading weight '{}'".format(fname))
-            pre_weight = torch.load(fname)['state_dict']
-            model_dict = model.state_dict()
-
-            for index, key in enumerate(model_dict.keys()):
-                if 'classifier' not in key and 'gamma' not in key:
-                    if model_dict[key].shape == pre_weight[key].shape:
-                        model_dict[key] = pre_weight[key]
-                    else:
-                        log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
-
-            model.load_state_dict(model_dict, strict=True)
-            log("=> loaded weight '{}'".format(fname))
-        else:
-            log("=> no weight found at '{}'".format(fname))
-
-        # Fix the backbone layers
-        for param in model.layer0.parameters():
-            param.requires_grad = False
-        for param in model.layer1.parameters():
-            param.requires_grad = False
-        for param in model.layer2.parameters():
-            param.requires_grad = False
-        for param in model.layer3.parameters():
-            param.requires_grad = False
-        for param in model.layer4.parameters():
-            param.requires_grad = False
-        for param in model.ppm.parameters():
-            param.requires_grad = False
-        for param in model.bottleneck.parameters():
-            param.requires_grad = False
-
     # ========= Data  ==========
-    train_loader, train_sampler = get_train_loader(args)
     episodic_val_loader, _ = get_val_loader(args)
 
-    # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
-    Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).cuda()
-    optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
-    scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
-
     # ====== Summarize Testing FG / All  ======
-
+    args.test_num=2000
 
     iter_num = 0
     fg_num = defaultdict(int)  # Default value is 0
@@ -131,7 +86,7 @@ def main(args: argparse.Namespace) -> None:
     if e%10==0:
         fb_ratio0 = {k: round(fg_num[k]/fb_num[k], 3) for k in fg_num}
         print('iter {} {}'.format(e, fb_ratio0))
-        for k, v in fb_ratio:
+        for k, v in fb_ratio.items():
             print('-- k {} : v {}'.format(k, v.avg))
 
 
