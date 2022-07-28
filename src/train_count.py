@@ -83,7 +83,7 @@ def main(args: argparse.Namespace) -> None:
         fb_num[subcls[0].item()] += torch.sum(freq).item()
         fb_ratio[subcls[0].item()].update( (freq[1]/torch.sum(freq)).item() )
 
-        if e%10==0:
+        if e%100==0:
             fb_ratio0 = {k: round(fg_num[k]/fb_num[k], 3) for k in fg_num}
             print('iter {} {}'.format(e, fb_ratio0))
             for k, v in fb_ratio.items():
