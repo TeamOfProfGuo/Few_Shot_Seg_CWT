@@ -9,7 +9,7 @@ DATA:
   num_classes_tr: 2  # Counting background for training
   num_classes_val: 5
   use_split_coco: False
-  workers: 0
+  workers: 2
   image_size: 473
   padding_label: 255
   mean: [0.485, 0.456, 0.406]
@@ -18,6 +18,10 @@ DATA:
   scale_max: 3.0
   rot_min: -10
   rot_max: 10
+  brightness: 0
+  contrast: 0
+  saturation: 0
+  hue: 0
   augmentations: ['hor_flip', 'resize_np']
 
   meta_aug: 1  # default is 1/can not be 0

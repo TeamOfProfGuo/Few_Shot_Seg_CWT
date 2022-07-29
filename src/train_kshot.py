@@ -18,31 +18,43 @@ from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
+from src.exp import modify_config
 import argparse
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
     parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_id', type=str, required=True, help='exp settings')
     parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
     args = parser.parse_args()
     assert args.config is not None
     cfg = load_cfg_from_cfg_file(args.config)
+    cfg.config_path = args.config
+    cfg.exp_id = args.exp_id
     if args.opts is not None:
         cfg = merge_cfg_from_list(cfg, args.opts)
     return cfg
 
 
 def main(args: argparse.Namespace) -> None:
+    if args.exp_id != 'test':
+        date, group, info = tuple(args.exp_id.split('_'))
+        sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_id}'
+    else:
+        date = group = info = None
+        save_path = 'test'
 
-    sv_path = 'msc_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+    # apply experiment settings
+    args, exp_dict = modify_config(args, date, group, info)
+
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
     set_log_path(path=sv_path)
     log('save_path {}'.format(sv_path))
 
     log(args)
+    log(f'\nExperiment setting:\n{exp_dict}')
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速

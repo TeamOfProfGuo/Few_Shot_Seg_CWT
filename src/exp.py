@@ -20,6 +20,9 @@ def modify_config(args, date, group, info):
         exp_dict['hue'] = int(info[3]) / 10
         exp_dict['augmentations'] = ['color_aug', 'hor_flip', 'resize_np']
 
+    if group == "test":
+        return args, exp_dict
+
     # apply experiment settings
     for k, v in exp_dict.items():
         args.__setattr__(k, v)

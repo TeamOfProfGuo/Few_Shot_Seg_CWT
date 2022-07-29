@@ -16,23 +16,24 @@
 module purge
 
 DATA=$1
-SPLIT=$2
-LAYERS=$3
-SHOT=$4
+EXP_ID=$2
+SPLIT=$3
+LAYERS=$4
+SHOT=$5
 
 
 
 echo "start"
 singularity exec --nv \
-            --overlay /scratch/lg154/python36/python36.ext3:ro \
-            --overlay /scratch/lg154/sseg/dataset/coco2014.sqf:ro \
+            --overlay /scratch/xl3139/overlay-25GB-500K-PROTR.ext3:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
             python -m src.train_kshot --config config_files/${DATA}_mmn.yaml \
+                     --exp_id ${EXP_ID} \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log_5shot_new.txt 2>&1"
+					 > log_base.txt 2>&1"
 
 echo "finish"
 
