@@ -24,23 +24,42 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import argparse
 from typing import Tuple
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list
-
+from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path,  log
+from src.exp import modify_config
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
     parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_id', type=str, required=True, help='exp settings')
     parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
     args = parser.parse_args()
     assert args.config is not None
     cfg = load_cfg_from_cfg_file(args.config)
+    cfg.config_path = args.config
+    cfg.exp_id = args.exp_id
     if args.opts is not None:
         cfg = merge_cfg_from_list(cfg, args.opts)
     return cfg
 
 
 def main(args: argparse.Namespace) -> None:
-    print(args)
+    if args.exp_id != 'test':
+        date, group, info = tuple(args.exp_id.split('_'))
+        sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_id}'
+    else:
+        date = group = info = None
+        save_path = 'test'
+
+    sv_path = os.path.join('./results', sv_path)
+    ensure_path(sv_path)                  # 确定path合法并且询问是否要清除先前的folder
+    set_log_path(path=sv_path)
+    log(f'save_path {sv_path}')
+
+    # apply experiment settings
+    args, exp_dict = modify_config(args, date, group, info)
+
+    log(args)
+    log(f'Experiment setting:\n{exp_dict}')
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -58,7 +77,7 @@ def main(args: argparse.Namespace) -> None:
         fname = args.resume_weights + args.train_name + '/' + \
                 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
-            print("=> loading weight '{}'".format(fname))
+            log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
             pre_dict = model.state_dict()
 
@@ -70,9 +89,9 @@ def main(args: argparse.Namespace) -> None:
                         print('Mismatched shape {}: {}, {}'.format( key, pre_weight['module.' + key].shape, pre_dict[key].shape))
 
             model.load_state_dict(pre_dict, strict=True)
-            print("=> loaded weight '{}'".format(fname))
+            log("=> loaded weight '{}'".format(fname))
         else:
-            print("=> no weight found at '{}'".format(fname))
+            log("=> no weight found at '{}'".format(fname))
 
         # Fix the backbone layers
         for param in model.layer0.parameters():
@@ -111,9 +130,8 @@ def main(args: argparse.Namespace) -> None:
         iter_per_epoch = args.iter_per_epoch if args.iter_per_epoch <= len(train_loader) else len(train_loader)
 
     log_iter = iter_per_epoch
-
     # ====== Training  ======
-    print('==> Start training')
+    log('==> Start training')
     for epoch in range(args.epochs):
 
         _, _ = do_epoch(
@@ -142,7 +160,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer = os.path.join(trans_save_dir, f'best.pth')
 
             if args.save_models:
-                print('Saving checkpoint to: ' + filename_transformer)
+                log('Saving checkpoint to: ' + filename_transformer)
 
                 torch.save(
                     {'epoch': epoch,
@@ -151,7 +169,7 @@ def main(args: argparse.Namespace) -> None:
                     filename_transformer
                 )
 
-        print("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
+        log("=> Max_mIoU = {:.3f}".format(max_val_mIoU))
 
     if args.save_models:  # 所有跑完，存last epoch
         filename_transformer = os.path.join(trans_save_dir, 'final.pth')
@@ -180,7 +198,6 @@ def do_epoch(
     train_Ious0 = torch.zeros(log_iter)
 
     iterable_train_loader = iter(train_loader)
-
     model.train()
     transformer.train()
 
@@ -279,10 +296,10 @@ def do_epoch(
         train_Ious0[i] = (IoUb0 + IoUf0)/2
 
         if (epoch == 0 and i%100==0) or i%500==0:
-            print('iter {} IoUf {:.2f}, IoUb {:.2f}, IoUf0 {:.2f}, IoUb0 {:.2f}, pred_q0 {}'.format(
+            log('iter {} IoUf {:.2f}, IoUb {:.2f}, IoUf0 {:.2f}, IoUb0 {:.2f}, pred_q0 {}'.format(
                 i, IoUf, IoUb, IoUf0, IoUb0, torch.bincount(pred_q0.argmax(1).view(-1)).cpu().numpy()
             ))
-    print('Epoch {}: The mIoU {:.2f}, loss {:.2f}, mIoU0 {:.2f}'.format(
+    log('Epoch {}: The mIoU {:.2f}, loss {:.2f}, mIoU0 {:.2f}'.format(
         epoch + 1, train_Ious.mean(), train_losses.mean(), train_Ious0.mean() ))
 
     return train_Ious, train_losses

@@ -1,4 +1,5 @@
 # encoding:utf-8
+import pdb
 
 import cv2
 import numpy as np
@@ -319,7 +320,6 @@ class EpisodicData(Dataset):
                     support_image_list[k], support_label_list[k] = self.transform(support_image_list[k], support_label_list[k])
                     support_image_list[k] = support_image_list[k].unsqueeze(0)
                     support_label_list[k] = support_label_list[k].unsqueeze(0)
-
         # Reshape properly
         spprt_imgs = torch.cat(support_image_list, 0)
         spprt_labels = torch.cat(support_label_list, 0)

@@ -18,10 +18,10 @@ DATA:
   scale_max: 2.0
   rot_min: -10
   rot_max: 10
-  brightness: 0.3
-  contrast: 0.2
+  brightness: 0
+  contrast: 0
   saturation: 0
-  hue: 0
+  hue: 0.1
   augmentations: ['color_aug', 'hor_flip', 'resize_np']
 
 TRAIN:
@@ -97,7 +97,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_wa_argmax2_tp11
+  exp_name: dot_wa_argmax2_tp11_0001
 
 DISTRIBUTED:
   gpus: [0]

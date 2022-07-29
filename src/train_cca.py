@@ -5,12 +5,13 @@ import os
 import time
 import random
 import torch
+import argparse
 import numpy as np
 import torch.nn as nn
+import torch.utils.data
+import torch.nn.parallel
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-import torch.nn.parallel
-import torch.utils.data
 from collections import defaultdict
 from .model import MMN, SegLoss, reset_cls_wt, reset_spt_label, compress_pred, pred2bmask
 from .model.pspnet import get_model
@@ -18,16 +19,19 @@ from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
-import argparse
+from src.exp import modify_config
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
     parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_id', type=str, required=True, help='exp settings')
     parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
     args = parser.parse_args()
     assert args.config is not None
     cfg = load_cfg_from_cfg_file(args.config)
+    cfg.config_path = args.config
+    cfg.exp_id = args.exp_id
     if args.opts is not None:
         cfg = merge_cfg_from_list(cfg, args.opts)
     return cfg
@@ -35,13 +39,23 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_name}'
+    if args.exp_id != 'test':
+        date, group, info = tuple(args.exp_id.split('_'))
+        sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_id}'
+    else:
+        date = group = info = None
+        save_path = 'test'
+
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)                  # 确定path合法并且询问是否要清除先前的folder
     set_log_path(path=sv_path)
     log(f'save_path {sv_path}')
 
+    # apply experiment settings
+    args, exp_dict = modify_config(args, date, group, info)
+
     log(args)
+    log(f'Experiment setting:\n{exp_dict}')
 
     if args.manual_seed is not None:
         cudnn.benchmark = False           # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
