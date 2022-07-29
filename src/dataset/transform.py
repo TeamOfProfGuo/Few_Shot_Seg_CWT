@@ -315,43 +315,57 @@ class FitCrop(object):
         size (sequence or int): Desired output size of the crop. If size is an
         int instead of sequence like (h, w), a square crop (size, size) is made.
     """
-    def __init__(self, fg_ratio, thresh=0.05):
-        self.thresh = thresh  # whether to crop at 1/2 or 1/3
-        self.k = 2 if fg_ratio <= self.thresh else 3  # if fg is very small portion, will cutoff bigger area
+    def __init__(self, k=2, multi = False):
+        self.k = k  # whether to crop at 1/2 or 1/3,  if fg is very small portion, will cutoff bigger area
+        self.multi = multi  # whether to return multiple cropped image
 
     def __call__(self, image, label):
         h, w, _ = image.shape
 
         label_binary = label.copy()
         label_binary[label_binary == 255] = 0
-        _, labels = cv2.connectedComponents(label_binary)
+        _, labels = cv2.connectedComponents(label_binary)  # labels 为联通域 的 idx
+
         freq = np.bincount(labels.flatten())
         freq[0] = 0
-        obj_idx = np.argmax(freq)
+        obj_idx = np.argmax(freq)      # id for 最大联通域
+        pxl_cnt = freq[obj_idx]
+        h0, h1, w0, w1 = self.get_coord(labels, obj_idx, h, w)
+        image = image[h0:h1, w0:w1]
+        label = label[h0:h1, w0:w1]
 
+        if self.multi and len(freq) >= 3:
+            freq[obj_idx] = 0
+            obj_idx2 = np.argmax(freq)
+            pxl_cnt2 = freq[obj_idx2]
+
+            if pxl_cnt2 / pxl_cnt >= 0.3:
+                h0, h1, w0, w1 = self.get_coord(labels, obj_idx2, h, w)
+                image2 = image[h0:h1, w0:w1]
+                label2 = label[h0:h1, w0:w1]
+
+                return image, label, image2, label2
+
+        return image, label
+
+    def get_coord(self, labels, obj_idx, h, w):
         mask_pos = np.where(labels == obj_idx)
         min_h, max_h, min_w, max_w = np.min(mask_pos[0]), np.max(mask_pos[0]), np.min(mask_pos[1]), np.max(mask_pos[1])
 
-        h0, h1 = min_h//self.k, h - (h-max_h)//self.k
-        w0, w1 = min_w//self.k, w - (w-max_w)//self.k
+        h0, h1 = min_h // self.k, h - (h - max_h) // self.k
+        w0, w1 = min_w // self.k, w - (w - max_w) // self.k
 
-        if (h1-h0)/(w1-w0) <= 0.7:   # height too small
-            if h0 <= h-h1:
+        if (h1 - h0) / (w1 - w0) <= 0.7:  # height too small
+            if h0 <= h - h1:
                 h0 = 0
             else:
                 h1 = h
-        elif (h1-h0)/(w1-w0) >= 1.5:  # width too small
-            if w0 <= w-w1:
+        elif (h1 - h0) / (w1 - w0) >= 1.5:  # width too small
+            if w0 <= w - w1:
                 w0 = 0
             else:
                 w1 = w
-
-        image = image[h0:h1, w0:w1]
-        if label is not None:
-            label = label[h0:h1, w0:w1]
-            return image, label
-        else:
-            return image
+        return h0, h1, w0, w1
 
 
 

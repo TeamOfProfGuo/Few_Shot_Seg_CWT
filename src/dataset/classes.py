@@ -87,26 +87,26 @@ classId2className = {'coco': {
                          80: 'toothbrush'},
 
                      'pascal': {
-                        1: 'airplane',
-                        2: 'bicycle',
-                        3: 'bird',
-                        4: 'boat',
-                        5: 'bottle',
-                        6: 'bus',
-                        7: 'cat',
-                        8: 'car',
-                        9: 'chair',
-                        10: 'cow',
-                        11: 'diningtable',
-                        12: 'dog',
-                        13: 'horse',
-                        14: 'motorcycle',
-                        15: 'person',
-                        16: 'pottedplant',
-                        17: 'sheep',
-                        18: 'sofa',
-                        19: 'train',
-                        20: 'tv'
+                        1: 'airplane',   # 0.14
+                        2: 'bicycle',    # 0.07
+                        3: 'bird',       # 0.13
+                        4: 'boat',       # 0.12
+                        5: 'bottle',     # 0.15
+                        6: 'bus',        # 0.35
+                        7: 'cat',        # 0.20
+                        8: 'car',        # 0.26
+                        9: 'chair',      # 0.10
+                        10: 'cow',       # 0.24
+                        11: 'diningtable', # 0.22
+                        12: 'dog',         # 0.23
+                        13: 'horse',       # 0.21
+                        14: 'motorcycle',  # 0.22
+                        15: 'person',      # 0.20
+                        16: 'pottedplant', # 0.11
+                        17: 'sheep',       # 0.19
+                        18: 'sofa',        # 0.23
+                        19: 'train',       # 0.27
+                        20: 'tv'           # 0.14
                         }
                      }
 

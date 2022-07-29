@@ -187,6 +187,8 @@ class EpisodicData(Dataset):
         self.shot = args.shot
         self.padding = [v*255 for v in args.mean] if args.get('padding')=='avg' else None
         self.meta_aug = args.get('meta_aug', 0)
+        self.aug_th = args.get('aug_th', [0.15, 0.30])
+        self.aug_type = args.get('aug_type', 0)
         self.random_shot = args.random_shot
         self.data_root = args.data_root
         self.class_list = class_list
@@ -296,9 +298,15 @@ class EpisodicData(Dataset):
                     label_freq = np.bincount(support_label_list[k].flatten())
                     fg_ratio = label_freq[1] / label_freq[0]
 
-                    new_img, new_label = self.get_aug_data0(fg_ratio, support_image_list[k], support_label_list[k])
-                    support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img.unsqueeze(0)], dim=0)
-                    support_label_list[k] = torch.cat([org_label.unsqueeze(0), new_label.unsqueeze(0)], dim=0)
+                    if self.aug_type == 0:
+                        new_img, new_label = self.get_aug_data0(fg_ratio, support_image_list[k], support_label_list[k])
+                    elif self.aug_type == 1:
+                        new_img, new_label = self.get_aug_data1(fg_ratio, support_image_list[k], support_label_list[k])
+                    elif self.aug_type == 3:
+                        new_img, new_label = self.get_aug_data3(fg_ratio, support_image_list[k], support_label_list[k])
+
+                    support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img], dim=0)
+                    support_label_list[k] = torch.cat([org_label.unsqueeze(0), new_label], dim=0)
 
                 else:
                     support_image_list[k], support_label_list[k] = self.transform(support_image_list[k], support_label_list[k])
@@ -315,7 +323,8 @@ class EpisodicData(Dataset):
 
     def get_aug_data0(self, fg_ratio, support_image, support_label):
         if fg_ratio <= 0.15:
-            meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
+            k = 2 if fg_ratio <= 0.05 else 3  # whether to crop at 1/2 or 1/3
+            meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
         elif 0.15 < fg_ratio < 0.3:
             meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
         else:
@@ -324,18 +333,55 @@ class EpisodicData(Dataset):
                 [transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +
                 self.transform.segtransform[-2:])
         new_img, new_label = meta_trans(support_image, support_label)
-        return new_img, new_label
+        return new_img.unsqueeze(0), new_label.unsqueeze(0)
 
     def get_aug_data1(self, fg_ratio, support_image, support_label):
+        scale = 473 / max(support_label.shape)
+
+        if fg_ratio <= self.aug_th[0]:  # 0.15
+            meta_trans1 = transform.Compose([transform.FitCrop(k=2)] + self.transform.segtransform[-3:])
+            meta_trans2 = transform.Compose([transform.FitCrop(k=3)] + self.transform.segtransform[-3:])
+        elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
+            meta_trans1 = transform.Compose([transform.FitCrop(k=3)] + self.transform.segtransform[-3:])
+            meta_trans2 = transform.Compose([transform.RandScale(scale=(scale * 0.85, scale * 0.85 + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])
+        else:
+            meta_trans1 = transform.Compose([transform.RandScale(scale=(scale * 0.85, scale * 0.85 + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])
+            meta_trans2 = transform.Compose([transform.RandScale(scale=(scale * 0.85, scale * 0.85 + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])
+        new_img1, new_label1 = meta_trans1(support_image, support_label)
+        new_img2, new_label2 = meta_trans2(support_image, support_label)
+
+        new_imgs = torch.cat([new_img1.unsqueeze(0), new_img2.unsqueeze(0)], dim=0)
+        new_labels = torch.cat([new_label1.unsqueeze(0), new_label2.unsqueeze(0)], dim=0)
+        return new_imgs, new_labels
+
+    def get_aug_data2(self, fg_ratio, support_image, support_label):   # 最初的 data augmentation
         if fg_ratio <= 0.15:
-            meta_trans = transform.Compose([transform.FitCrop(fg_ratio=fg_ratio)] + self.transform.segtransform[-3:])
-        elif 0.15 < fg_ratio < 0.3:
+            k = 2 if fg_ratio <= 0.05 else 3
+            meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
+        else:
+            meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
+        new_img, new_label = meta_trans(support_image, support_label)
+        return new_img.unsqueeze(0), new_label.unsqueeze(0)
+
+    def get_aug_data3(self, fg_ratio, support_image, support_label):    # base data augmentation: resize (with padding)
+        if fg_ratio <= self.aug_th[0]:
+            k = 2 if fg_ratio <= 0.03 else 3  # whether to crop at 1/2 or 1/3
+            trans_crop = transform.FitCrop(k=k, multi=True)
+            crop_out = trans_crop(support_image, support_label)
+            meta_trans = transform.Compose(self.transform.segtransform[-3:])
+
+            new_img, new_label = meta_trans(crop_out[0], crop_out[1])
+            if len(crop_out) == 2:
+                return new_img.unsqueeze(0), new_label.unsqueeze(0)
+            elif len(crop_out) == 4:
+                new_img2, new_label2 = meta_trans(crop_out[2], crop_out[3])
+                return torch.cat([new_img.unsqueeze(0), new_img2.unsqueeze(0)], dim=0), torch.cat([new_label.unsqueeze(0), new_label2.unsqueeze(0)], dim=0)
+
+        elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
             meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
         else:
             scale = 473 / max(support_label.shape) * 0.7
-            meta_trans = transform.Compose(
-                [transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +
-                self.transform.segtransform[-2:])
+            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])
         new_img, new_label = meta_trans(support_image, support_label)
-        return new_img, new_label
+        return new_img.unsqueeze(0), new_label.unsqueeze(0)
 

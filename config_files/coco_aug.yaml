@@ -23,6 +23,7 @@ DATA:
   augmentations: ['resize']
   meta_aug: 2  # default is 1/can not be 0
   aug_th: [0.15, 0.30]
+  aug_type: 3
 
 
 TRAIN:
@@ -91,7 +92,7 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: dot_wa_aug0
+  exp_name: dot_wa_aug3
 
 DISTRIBUTED:
   gpus: [0]
