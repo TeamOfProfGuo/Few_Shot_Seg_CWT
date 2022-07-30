@@ -155,11 +155,6 @@ def main(args: argparse.Namespace) -> None:
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
-                    if args.loss_shot=='sum':
-                        pred_att = model.classifier(att_fq_single)
-                        pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-                        sum_loss = sum_loss + criterion(pred_att, q_label.long())
-
                 att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                 att_fq = att_fq.mean(dim=0, keepdim=True)
                 fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
