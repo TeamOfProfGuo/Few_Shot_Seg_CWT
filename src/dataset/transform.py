@@ -443,10 +443,9 @@ class ColorJitter(object):
         cj_type: {b: brightness, s: saturation, c: constast}
         '''
         if self.cj_type == "b":
-            # value = random.randint(-50, 50)
-            value = np.random.choice(np.array([-50, -40, -30, 30, 40, 50]))
             hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
             h, s, v = cv2.split(hsv)    # Hue, Saturation, and Value (Brightness)
+            value = 35 if np.mean(v) <= 125 else -35
             if value >= 0:
                 lim = 255 - value
                 v[v > lim] = 255
@@ -478,6 +477,20 @@ class ColorJitter(object):
 
         return img, label
 
+
+class ColorAug(object):
+    def __init__(self, brightness=None, contrast=None, saturation=None, hue=None):
+        self.brightness = brightness                   # [max(0, 1 - brightness), 1 + brightness]
+        self.contrast = contrast                       # [max(0, 1 - contrast), 1 + contrast]
+        self.saturation = saturation                   # [max(0, 1 - saturation), 1 + saturation]
+        self.hue = hue                                 # [-hue, hue]
+        self.gitter = transforms.ColorJitter(self.brightness, self.contrast, self.saturation, self.hue)
+
+    def __call__(self, image, label):
+        image = Image.fromarray(np.uint8(image)).convert('RGB')
+        image = self.gitter(image)
+        image = np.array(image)
+        return image, label
 
 
 class Contrast(object):

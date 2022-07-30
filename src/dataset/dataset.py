@@ -304,6 +304,8 @@ class EpisodicData(Dataset):
                         new_img, new_label = self.get_aug_data1(fg_ratio, support_image_list[k], support_label_list[k])
                     elif self.aug_type == 3:
                         new_img, new_label = self.get_aug_data3(fg_ratio, support_image_list[k], support_label_list[k])
+                    elif self.aug_type == 4:
+                        new_img, new_label = self.get_aug_data4(fg_ratio, support_image_list[k], support_label_list[k])
 
                     support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img], dim=0)
                     support_label_list[k] = torch.cat([org_label.unsqueeze(0), new_label], dim=0)
@@ -322,20 +324,18 @@ class EpisodicData(Dataset):
         # subcls_list  返回的是 选取的class在所有meta train cls list 中的index+1/rank
 
     def get_aug_data0(self, fg_ratio, support_image, support_label):
-        if fg_ratio <= 0.15:
-            k = 2 if fg_ratio <= 0.05 else 3  # whether to crop at 1/2 or 1/3
+        if fg_ratio <= self.aug_th[0]:
+            k = 2 if fg_ratio <= 0.03 else 3  # whether to crop at 1/2 or 1/3
             meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
-        elif 0.15 < fg_ratio < 0.3:
+        elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
             meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
         else:
             scale = 473 / max(support_label.shape) * 0.7
-            meta_trans = transform.Compose(
-                [transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +
-                self.transform.segtransform[-2:])
+            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
         new_img, new_label = meta_trans(support_image, support_label)
         return new_img.unsqueeze(0), new_label.unsqueeze(0)
 
-    def get_aug_data1(self, fg_ratio, support_image, support_label):
+    def get_aug_data1(self, fg_ratio, support_image, support_label):  # create two augmented data
         scale = 473 / max(support_label.shape)
 
         if fg_ratio <= self.aug_th[0]:  # 0.15
@@ -379,6 +379,18 @@ class EpisodicData(Dataset):
 
         elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
             meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
+        else:
+            scale = 473 / max(support_label.shape) * 0.7
+            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])
+        new_img, new_label = meta_trans(support_image, support_label)
+        return new_img.unsqueeze(0), new_label.unsqueeze(0)
+
+    def get_aug_data4(self, fg_ratio, support_image, support_label):
+        if fg_ratio <= self.aug_th[0]:
+            k = 2 if fg_ratio <= 0.03 else 3
+            meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
+        elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
+            meta_trans = transform.Compose([transform.ColorAug(cj_type='b')] + self.transform.segtransform[-3:])
         else:
             scale = 473 / max(support_label.shape) * 0.7
             meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])

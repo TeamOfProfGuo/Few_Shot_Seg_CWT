@@ -19,9 +19,11 @@ DATA:
   rot_min: -10
   rot_max: 10
 
-  padding: avg
+  padding: avg   # avg or other
   augmentations: ['resize']
   meta_aug: 2  # default is 1/can not be 0
+  aug_th: [0.20, 0.35]      # [0.15, 0.30] th0
+  aug_type: 0
 
 TRAIN:
   ckpt_path: checkpoints/
@@ -93,7 +95,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_bright_scale
+  exp_name: dot_aug0_th2035
 
 DISTRIBUTED:
   gpus: [0]
