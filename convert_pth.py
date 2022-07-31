@@ -2,7 +2,7 @@
 import torch
 from collections import OrderedDict
 
-fpath = './pretrained_models/pascal/split=2/pspnet_resnet50/'
+fpath = './pretrained_models/coco/split=0/pspnet_resnet50/'
 pre_weight = torch.load(fpath+'best0.pth')    # ['epoch', 'state_dict', 'optimizer']
 
 wt = pre_weight['state_dict']
@@ -13,4 +13,5 @@ for k, v in wt.items():
 pre_weight['state_dict'] = new_wt
 
 torch.save(pre_weight, fpath+'best1.pth')
+print('===> save ckpt file to {}'.format(fpath+'best1.pth'))
 
