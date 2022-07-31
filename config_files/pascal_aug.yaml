@@ -21,9 +21,10 @@ DATA:
 
   padding: avg   # avg or other
   augmentations: ['resize']
-  meta_aug: 1  # default is 1/can not be 0
-  aug_th: [0.20, 0.35]      # [0.15, 0.30] th0
+  meta_aug: 2  # default is 1/can not be 0
+  aug_th: [0.15, 0.30]    # [0.15, 0.30] th0   [0.20, 0.35]
   aug_type: 0
+  wt_file: 1
 
 TRAIN:
   ckpt_path: checkpoints/
@@ -76,7 +77,6 @@ MODEL:
   wa: True       # True or False
   proj_drop: 0.5
   att_drop: 0.5
-  wt_file: 1
 
 Classifier:
   dist: dot
@@ -96,7 +96,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_noaug1
+  exp_name: dot1_aug0
 
 DISTRIBUTED:
   gpus: [0]
