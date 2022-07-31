@@ -232,10 +232,11 @@ def standard_validate(args, val_loader, model, use_callback):
             images = images.cuda()  # [1, 1, 3, h, w]
             gt = gt.cuda()          # [1, 1, h, w]
 
-        logits = model(images).detach()
-        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
-        loss = loss_fn(logits, gt)
-        loss_meter.update(loss.item())
+        with torch.no_grad():
+            logits = model(images).detach()
+            loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
+            loss = loss_fn(logits, gt)
+            loss_meter.update(loss.item())
 
         intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)  # gt [B, 473, 473]
         intersections += intersection  # [16]
