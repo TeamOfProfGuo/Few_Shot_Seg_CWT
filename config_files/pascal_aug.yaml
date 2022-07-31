@@ -76,6 +76,7 @@ MODEL:
   wa: True       # True or False
   proj_drop: 0.5
   att_drop: 0.5
+  wt_file: 1
 
 Classifier:
   dist: dot
@@ -95,7 +96,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot_noaug
+  exp_name: dot_noaug1
 
 DISTRIBUTED:
   gpus: [0]

@@ -57,8 +57,10 @@ def main(args: argparse.Namespace) -> None:
     model = get_model(args).cuda()
 
     if args.resume_weights:
-        fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
+        if args.get('wt_file', 0) == 1:
+            fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best1.pth'.format(args.train_split, args.arch, args.layers)
+        else:
+            fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
