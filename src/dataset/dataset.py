@@ -297,7 +297,7 @@ class EpisodicData(Dataset):
                 if self.meta_aug>1:
                     org_img, org_label = self.transform(support_image_list[k], support_label_list[k])  # flip and resize
                     label_freq = np.bincount(support_label_list[k].flatten())
-                    fg_ratio = label_freq[1] / label_freq[0]
+                    fg_ratio = label_freq[1] / np.sum(label_freq)
 
                     if self.aug_type == 0:
                         new_img, new_label = self.get_aug_data0(fg_ratio, support_image_list[k], support_label_list[k])
