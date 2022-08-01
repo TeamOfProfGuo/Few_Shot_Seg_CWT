@@ -22,7 +22,7 @@ DATA:
   padding: avg   # avg or other
   augmentations: ['resize']
   meta_aug: 2  # default is 1/can not be 0
-  aug_th: [0.15, 0.30]
+  aug_th: [0.12, 0.25]
   aug_type: 0
   wt_file: 1
 
@@ -92,7 +92,7 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: dot1_aug0
+  exp_name: dot1_aug0_1225
 
 DISTRIBUTED:
   gpus: [0]
