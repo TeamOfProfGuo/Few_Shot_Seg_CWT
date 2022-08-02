@@ -334,7 +334,7 @@ class EpisodicData(Dataset):
         elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
             meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
         else:
-            scale = 473 / max(support_label.shape) * 0.7
+            scale = 473 / max(support_label.shape) * 0.8
             meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
         new_img, new_label = meta_trans(support_image, support_label)
         return new_img.unsqueeze(0), new_label.unsqueeze(0)
