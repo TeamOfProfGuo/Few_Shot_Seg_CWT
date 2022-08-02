@@ -16,8 +16,8 @@ from .model import MMN, SegLoss
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
+from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter, batch_intersectionAndUnionGPU
+from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log, tensor_slice
 import argparse
 
 
@@ -143,6 +143,18 @@ def main(args: argparse.Namespace) -> None:
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+            if args.att_type == 0 or args.att_type == 1:    # only use original img / only use augmented img
+                fs_lst = {k: [tensor_slice(e, idx=args.att_type) for e in v] for k, v in fs_lst.items()}
+                f_s = tensor_slice(f_s, idx=args.att_type)
+            elif args.att_type == 3:
+                with torch.no_grad():
+                    pred_s0 = model.classifier(f_s)
+                    pred_s0 = F.interpolate(pred_s0, size=s_label.shape[1:], mode='bilinear', align_corners=True)   # [B, 2, 473, 473]
+                    intersection, union, target = batch_intersectionAndUnionGPU(pred_s0.unsqueeze(0), s_label.unsqueeze(0), num_classes=2, ignore_index=255)
+                    iou = torch.mean( (intersection / (union + 1e-10)).squeeze(0), dim=-1 )   # [1, B, 2]
+                    fs_lst = {k: [tensor_slice(e, ref=iou) for e in v] for k, v in fs_lst.items()}
+                    f_s = tensor_slice(f_s, ref=iou)
 
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
@@ -301,6 +313,10 @@ def validate_epoch(args, val_loader, model, Net):
         with torch.no_grad():
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+        if args.att_type == 0 or args.att_type == 1:  # only use original img / only use augmented img
+            fs_lst = {k: [tensor_slice(e, idx=args.att_type) for e in v] for k, v in fs_lst.items()}
+            f_s = tensor_slice(f_s, idx=args.att_type)
 
         Net.eval()
         with torch.no_grad():
