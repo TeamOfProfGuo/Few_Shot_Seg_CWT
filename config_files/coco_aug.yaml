@@ -25,6 +25,7 @@ DATA:
   aug_th: [0.15, 0.30]
   aug_type: 0
   wt_file: 1
+  att_type: 2 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
 
 TRAIN:
   ckpt_path: checkpoints/
