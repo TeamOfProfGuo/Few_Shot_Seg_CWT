@@ -24,10 +24,8 @@ def tensor_slice(x, idx=None, ref=None):    # idx is 0/1, ref is tensor on gpu
         out = x[:, idx, :, :, :]
     elif ref is not None:
         ref = ref.reshape((len(ref)//2, 2))
-        indices1 = torch.argmax(ref, dim=-1).unsqueeze(1)
-        indices0 = torch.arange(n//2, device=indices1.device).unsqueeze(1)
-        indices  = torch.cat([indices0, indices1], dim=-1)
-        out = x[indices]
+        indices = torch.argmax(ref, dim=-1)
+        out = x[ torch.arange(n//2, device=indices.device), indices ]
     return out
 
 def get_aux_loss(wt, att_q, f_q, q_label, model, eps=0.6, reduction='mean'):
