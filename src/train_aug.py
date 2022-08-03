@@ -163,7 +163,7 @@ def main(args: argparse.Namespace) -> None:
             att_fq = []
             sum_loss=0
             with torch.cuda.amp.autocast(enabled=use_amp):
-                for k in range(args.shot * args.meta_aug):
+                for k in range(len(f_s)):
                     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}   # only compare to org img
                     single_f_s = f_s[k:k + 1]
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
@@ -321,7 +321,7 @@ def validate_epoch(args, val_loader, model, Net):
         Net.eval()
         with torch.no_grad():
             att_fq = []
-            for k in range(args.shot * args.meta_aug):
+            for k in range(len(f_s)):
                 single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
                 single_f_s = f_s[k:k + 1]
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
