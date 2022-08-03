@@ -22,7 +22,7 @@ DATA:
   padding: avg   # avg or other
   augmentations: ['resize']
   meta_aug: 2  # default is 1/can not be 0
-  aug_th: [0.15, 0.25]
+  aug_th: [0.15, 0.30]
   aug_type: 0
   wt_file: 1
 
@@ -46,7 +46,7 @@ TRAIN:
   log_iter: 2000
   adapt_iter: 200
 
-  use_amp: True
+  use_amp: False
 
 MODEL:
   arch: resnet
@@ -92,7 +92,7 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: dot1_aug0_1525
+  exp_name: dot1_aug0_1530
 
 DISTRIBUTED:
   gpus: [0]
