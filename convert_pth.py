@@ -2,7 +2,7 @@
 import torch
 from collections import OrderedDict
 
-fpath = './pretrained_models/coco/split=0/pspnet_resnet50/'
+fpath = './pretrained_models/pascal/split=0/pspnet_resnet101/'
 pre_weight = torch.load(fpath+'best0.pth')    # ['epoch', 'state_dict', 'optimizer']
 
 wt = pre_weight['state_dict']
