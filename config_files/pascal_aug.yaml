@@ -21,11 +21,11 @@ DATA:
 
   padding: avg   # avg or other
   augmentations: ['resize']
-  meta_aug: 1  # default is 1/can not be 0
+  meta_aug: 2  # default is 1/can not be 0
   aug_th: [0.12, 0.25]    # [0.15, 0.30] th0   [0.20, 0.35]
   aug_type: 0
   wt_file: 1
-  att_type: 2 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
+  att_type: 3 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
 
 TRAIN:
   ckpt_path: checkpoints/
@@ -48,7 +48,7 @@ TRAIN:
   log_iter: 1190
   adapt_iter: 200
 
-  use_amp: True
+  use_amp: False
 
 MODEL:
   arch: resnet
@@ -97,7 +97,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot1_wt3_noaug
+  exp_name: dot1_wt3_aug0_1125_att3
 
 DISTRIBUTED:
   gpus: [0]
