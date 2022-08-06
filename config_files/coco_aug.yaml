@@ -25,7 +25,7 @@ DATA:
   aug_th: [0.15, 0.30]
   aug_type: 0
   wt_file: 1
-  att_type: 0 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
+  att_type: 3 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
 
 TRAIN:
   ckpt_path: checkpoints/
@@ -47,7 +47,8 @@ TRAIN:
   log_iter: 2000
   adapt_iter: 200
 
-  use_amp: False
+  use_amp: True
+  scaler: False
 
 MODEL:
   arch: resnet
@@ -78,7 +79,6 @@ Classifier:
   dist: dot
   cls_type: oooo
 
-
 EVALUATION:
   shot: 5
   random_shot: False
@@ -93,7 +93,7 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: dot1_aug0_1530_att0
+  exp_name: dot1_aug0_1530_att3
 
 DISTRIBUTED:
   gpus: [0]
