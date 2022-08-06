@@ -108,6 +108,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ====== Training  ======
     log('==> Start training')
+    scaler = torch.cuda.amp.GradScaler(enabled=args.use_amp)
     for epoch in range(1, args.epochs+1):
 
         train_loss_meter1 = AverageMeter()
@@ -156,13 +157,11 @@ def main(args: argparse.Namespace) -> None:
                     fs_lst = {k: [tensor_slice(e, ref=iou) for e in v] for k, v in fs_lst.items()}
                     f_s = tensor_slice(f_s, ref=iou)
 
-            use_amp=args.use_amp
-            scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
             sum_loss=0
-            with torch.cuda.amp.autocast(enabled=use_amp):
+            with torch.cuda.amp.autocast(enabled=args.use_amp):
                 for k in range(len(f_s)):
                     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}   # only compare to org img
                     single_f_s = f_s[k:k + 1]
@@ -192,10 +191,16 @@ def main(args: argparse.Namespace) -> None:
                 elif args.get('aux', False) != False:
                     loss = q_loss1 + args.aux * q_loss
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer_meta)
-            scaler.update()
-            optimizer_meta.zero_grad(set_to_none=True)
+            if args.get('scaler', False):
+                scaler.scale(loss).backward()
+                scaler.step(optimizer_meta)
+                scaler.update()
+                optimizer_meta.zero_grad(set_to_none=True)
+            else:
+                optimizer_meta.zero_grad(set_to_none=True)
+                loss.backward()
+                optimizer_meta.step()
+
             if args.scheduler == 'cosine':
                 scheduler.step()
 

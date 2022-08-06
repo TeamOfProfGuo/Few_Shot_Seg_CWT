@@ -48,7 +48,8 @@ TRAIN:
   log_iter: 1190
   adapt_iter: 200
 
-  use_amp: False
+  use_amp: True
+  scaler: False
 
 MODEL:
   arch: resnet
