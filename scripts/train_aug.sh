@@ -33,7 +33,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log_aug1.txt 2>&1"
+					 > log_aug.txt 2>&1"
 
 echo "finish"
 
