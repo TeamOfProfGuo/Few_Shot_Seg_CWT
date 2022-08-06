@@ -145,17 +145,18 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            if args.get('att_type', 2) == 0 or args.get('att_type', 2) == 1:    # only use original img / only use augmented img
-                fs_lst = {k: [tensor_slice(e, idx=args.att_type) for e in v] for k, v in fs_lst.items()}
-                f_s = tensor_slice(f_s, idx=args.att_type)
-            elif args.get('att_type', 2) == 3:
-                with torch.no_grad():
-                    pred_s0 = model.classifier(f_s)
-                    pred_s0 = F.interpolate(pred_s0, size=s_label.shape[1:], mode='bilinear', align_corners=True)   # [B, 2, 473, 473]
-                    intersection, union, target = batch_intersectionAndUnionGPU(pred_s0.unsqueeze(0), s_label.unsqueeze(0), num_classes=2, ignore_index=255)
-                    iou = torch.mean( (intersection / (union + 1e-10)).squeeze(0), dim=-1 )   # [1, B, 2] -> [B]/[shot*aug]   mean IoU of BG and FG
-                    fs_lst = {k: [tensor_slice(e, ref=iou) for e in v] for k, v in fs_lst.items()}
-                    f_s = tensor_slice(f_s, ref=iou)
+            if args.meta_aug > 1:
+                if args.get('att_type', 2) == 0 or args.get('att_type', 2) == 1:    # only use original img / only use augmented img
+                    fs_lst = {k: [tensor_slice(e, idx=args.att_type) for e in v] for k, v in fs_lst.items()}
+                    f_s = tensor_slice(f_s, idx=args.att_type)
+                elif args.get('att_type', 2) == 3:
+                    with torch.no_grad():
+                        pred_s0 = model.classifier(f_s)
+                        pred_s0 = F.interpolate(pred_s0, size=s_label.shape[1:], mode='bilinear', align_corners=True)   # [B, 2, 473, 473]
+                        intersection, union, target = batch_intersectionAndUnionGPU(pred_s0.unsqueeze(0), s_label.unsqueeze(0), num_classes=2, ignore_index=255)
+                        iou = torch.mean( (intersection / (union + 1e-10)).squeeze(0), dim=-1 )   # [1, B, 2] -> [B]/[shot*aug]   mean IoU of BG and FG
+                        fs_lst = {k: [tensor_slice(e, ref=iou) for e in v] for k, v in fs_lst.items()}
+                        f_s = tensor_slice(f_s, ref=iou)
 
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
