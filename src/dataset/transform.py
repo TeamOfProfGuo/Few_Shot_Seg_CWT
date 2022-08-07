@@ -479,7 +479,7 @@ class ColorJitter(object):
 
 
 class ColorAug(object):
-    def __init__(self, brightness=None, contrast=None, saturation=None, hue=None):
+    def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
         self.brightness = brightness                   # [max(0, 1 - brightness), 1 + brightness]
         self.contrast = contrast                       # [max(0, 1 - contrast), 1 + contrast]
         self.saturation = saturation                   # [max(0, 1 - saturation), 1 + saturation]

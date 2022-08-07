@@ -18,31 +18,44 @@ from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter, batch_intersectionAndUnionGPU
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log, tensor_slice
+from src.exp import modify_config
 import argparse
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Training classifier weight transformer')
     parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_id', type=str, required=True, help='exp settings')
     parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
     args = parser.parse_args()
     assert args.config is not None
     cfg = load_cfg_from_cfg_file(args.config)
+    cfg.exp_id = args.exp_id
     if args.opts is not None:
         cfg = merge_cfg_from_list(cfg, args.opts)
     return cfg
 
 
 def main(args: argparse.Namespace) -> None:
+    if args.exp_id != 'test':
+        date, group, info = tuple(args.exp_id.split('_'))
+        sv_path = f'cca_{args.train_name}/{args.arch}{args.layers}/split{args.train_split}_shot{args.shot}/{args.exp_id}'
+    else:
+        date = group = info = None
+        sv_path = 'test'
 
-    sv_path = 'aug_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+
+    # apply experiment settings
+    args, exp_dict = modify_config(args, date, group, info)
+
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
     set_log_path(path=sv_path)
     log('save_path {}'.format(sv_path))
 
     log(args)
+    log(f'\nExperiment setting:\n{exp_dict}')
+
 
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
@@ -58,7 +71,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.resume_weights:
         if args.get('wt_file', 0) == 1:
-            fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best1.pth'.format(args.train_split, args.arch, args.layers)
+            fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         else:
             fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
@@ -68,8 +81,8 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    if model_dict[key].shape == pre_weight[key].shape:
-                        model_dict[key] = pre_weight[key]
+                    if model_dict[key].shape == pre_weight['module.'+key].shape:
+                        model_dict[key] = pre_weight['module.'+key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
 
@@ -119,17 +132,16 @@ def main(args: argparse.Namespace) -> None:
         iterable_train_loader = iter(train_loader)
         for i in range(1, len(train_loader)+1):
             qry_img, q_label, spt_imgs, s_label, subcls, _, _ = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
-
             if torch.cuda.is_available():
-                spt_imgs = spt_imgs.cuda()  # [1, 1, 3, h, w]
-                s_label = s_label.cuda()  # [1, 1, h, w]
+                spt_imgs = spt_imgs.cuda()  # [1, n_shots * 2, 3, h, w]
+                s_label = s_label.cuda()  # [1, n_shots * 2, h, w]
                 q_label = q_label.cuda()  # [1, h, w]
                 qry_img = qry_img.cuda()  # [1, 3, h, w]
 
             # ====== Phase 1: Train the binary classifier on support samples ======
 
-            spt_imgs = spt_imgs.squeeze(0)       # [n_shots, 3, img_size, img_size]
-            s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
+            spt_imgs = spt_imgs.squeeze(0)       # [n_shots * 2, 3, img_size, img_size]
+            s_label = s_label.squeeze(0).long()  # [n_shots * 2, img_size, img_size]
 
             # fine-tune classifier
             model.eval()

@@ -23,7 +23,7 @@ DATA:
   augmentations: ['resize']
   meta_aug: 2  # default is 1/can not be 0
   aug_th: [0.12, 0.25]    # [0.15, 0.30] th0   [0.20, 0.35]
-  aug_type: 0
+  aug_type: 4
   wt_file: 1
   att_type: 3 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
 

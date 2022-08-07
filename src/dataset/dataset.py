@@ -36,7 +36,7 @@ def get_train_loader(args, episodic=True, return_path=False):
         ),
         'resize': transform.Resize(args.image_size),
         'resize_np': transform.Resize_np(size=(args.image_size, args.image_size)),
-        'color_aug': transform.ColorAug(args.brightness, args.contrast, args.saturation, args.hue)
+        'color_aug': transform.ColorAug(args.get('brightness', 0), args.get('contrast', 0), args.get('saturation', 0), args.get('hue', 0))
     }
 
     train_transform = [aug_dic[name] for name in args.augmentations]
@@ -191,6 +191,7 @@ class EpisodicData(Dataset):
         self.meta_aug = args.get('meta_aug', 0)
         self.aug_th = args.get('aug_th', [0.15, 0.30])
         self.aug_type = args.get('aug_type', 0)
+        self.args = args
 
         self.random_shot = args.random_shot
         self.data_root = args.data_root
@@ -200,6 +201,8 @@ class EpisodicData(Dataset):
         else:
             self.data_list, self.sub_class_file_list = make_dataset(args.data_root, args.val_list, self.class_list)
         self.transform = dt_transform
+
+        print(f"Augmenting data using the following setting {args.get('brightness', 0)}{args.get('contrast', 0)}{args.get('saturation', 0)}{args.get('hue', 0)}")
 
     def __len__(self):
         return len(self.data_list)
@@ -309,6 +312,9 @@ class EpisodicData(Dataset):
                         new_img, new_label = self.get_aug_data3(fg_ratio, support_image_list[k], support_label_list[k])
                     elif self.aug_type == 10:
                         new_img, new_label = self.get_aug_data10(fg_ratio, support_image_list[k], support_label_list[k])
+                    # aug with ColorJitter
+                    elif self.aug_type == 4:
+                        new_img, new_label = self.get_aug_data4(fg_ratio, support_image_list[k], support_label_list[k], self.args)
 
                     if new_img is not None:
                         support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img], dim=0)
@@ -403,3 +409,14 @@ class EpisodicData(Dataset):
         new_img, new_label = meta_trans(support_image, support_label)
         return new_img.unsqueeze(0), new_label.unsqueeze(0)
 
+    def get_aug_data4(self, fg_ratio, support_image, support_label, args):
+        if fg_ratio <= self.aug_th[0]:
+            k = 2 if fg_ratio <= 0.03 else 3  # whether to crop at 1/2 or 1/3
+            meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
+        elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
+            meta_trans = transform.Compose([transform.ColorAug(args.get('brightness', 0), args.get('contrast', 0), args.get('saturation', 0), args.get('hue', 0))] + self.transform.segtransform[-3:])
+        else:
+            scale = 473 / max(support_label.shape) * 0.8
+            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
+        new_img, new_label = meta_trans(support_image, support_label)
+        return new_img.unsqueeze(0), new_label.unsqueeze(0)

@@ -19,6 +19,15 @@ def modify_config(args, date, group, info):
         exp_dict['saturation'] = int(info[2]) / 10
         exp_dict['hue'] = int(info[3]) / 10
         exp_dict['augmentations'] = ['color_aug', 'hor_flip', 'resize_np']
+    
+    # [kca]: k-shot MMN, with color augmentation
+    if group == "kca":
+        assert len(info) == 4
+        exp_dict['brightness'] = int(info[0]) / 10 
+        exp_dict['contrast'] = int(info[1]) / 10
+        exp_dict['saturation'] = int(info[2]) / 10 
+        exp_dict['hue'] = int(info[3]) / 10
+        exp_dict['augmentations'] = ['resize']
 
     if group == "test":
         return args, exp_dict
