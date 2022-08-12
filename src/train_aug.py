@@ -202,6 +202,9 @@ def main(args: argparse.Namespace) -> None:
                 loss.backward()
                 optimizer_meta.step()
 
+            optimier = (param== )
+            loss
+
             if args.scheduler == 'cosine':
                 scheduler.step()
 
