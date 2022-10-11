@@ -3,30 +3,26 @@
 # This code is to pretrain model backbone on the base train data
 
 import os
-import time
 import yaml
 import random
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
 from tensorboardX import SummaryWriter
-from collections import defaultdict
-from typing import Tuple, Dict
+from typing import Dict
 from torch import Tensor
-from .model.pspnet import get_model
+from src.model.nets.pspnet import get_model
 
 from .test import episodic_validate
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
+from .util import intersectionAndUnionGPU, AverageMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list
 from .util import ensure_path, set_log_path, log
 import argparse
-import pdb
 
 
 def parse_args() -> argparse.Namespace:

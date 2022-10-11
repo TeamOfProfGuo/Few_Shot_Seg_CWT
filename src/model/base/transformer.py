@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from .conv4d import CenterPivotConv4d
+from src.model.base.conv4d import CenterPivotConv4d
 
 
 

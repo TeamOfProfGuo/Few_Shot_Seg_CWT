@@ -3,7 +3,6 @@
 import os
 import random
 import numpy as np
-import cv2
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -13,16 +12,12 @@ import torch.utils.data
 import torch.optim as optim
 from collections import defaultdict
 from .dataset.dataset import get_val_loader
-from .util import AverageMeter, batch_intersectionAndUnionGPU, get_model_dir, get_model_dir_trans
-from .util import find_free_port, setup, cleanup, to_one_hot, intersectionAndUnionGPU
-from .model.pspnet import get_model, get_classifier
-from .model.transformer import MultiHeadAttentionOne
-import torch.distributed as dist
-from tqdm import tqdm
+from .util import AverageMeter, batch_intersectionAndUnionGPU, get_model_dir_trans
+from src.model.nets.pspnet import get_model, get_classifier
+from src.model.base.transformer import MultiHeadAttentionOne
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, log
 import argparse
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.multiprocessing as mp
 import time
 from typing import Tuple
 

@@ -81,8 +81,7 @@ MODEL:
   att_drop: 0.5
 
 Classifier:
-  dist: dot
-  cls_type: oooo
+  cls_type: ooooo
 
 EVALUATION:
   shot: 1

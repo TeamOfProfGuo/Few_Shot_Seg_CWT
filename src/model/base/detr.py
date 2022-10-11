@@ -3,9 +3,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .match import MatchNet
-from .ops.modules import MSDeformAttn
-from .positional_encoding import SinePositionalEncoding
+from src.model.base.match import MatchNet
+from src.model.ops.modules import MSDeformAttn
+from src.model.base.positional_encoding import SinePositionalEncoding
 
 in_fea_dim_lookup = {'l3': 1024, 'l4': 2048, 'l34': 1024+2048, 'l23':512+1024}
 

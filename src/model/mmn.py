@@ -3,9 +3,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .match import MatchNet
-from .msm import MSBlock, WeightAverage
-from .model_util import SegLoss, get_corr
+from src.model.base.match import MatchNet
+from .msm import WeightAverage
+from .model_util import get_corr
 
 
 class MMN(nn.Module):

@@ -1,25 +1,14 @@
 
 import os
 import cv2
-import time
 import random
-import numpy as np
-import torch
 from torchvision import transforms
 import matplotlib.pyplot as plt
-import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.nn.parallel
-import torch.utils.data
-import torch.optim as optim
-from collections import defaultdict
 from src.model import *
-from src.model.pspnet import get_model
-from src.model.transformer import MultiHeadAttentionOne, DynamicFusion, FuseNet
+from src.model.nets.pspnet import get_model
 from src.optimizer import get_optimizer, get_scheduler
-from src.dataset.dataset import get_val_loader, get_train_loader, EpisodicData
-from src.util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
+from src.dataset.dataset import get_val_loader, get_train_loader
+from src.util import intersectionAndUnionGPU, AverageMeter
 import argparse
 from src.util import load_cfg_from_cfg_file, merge_cfg_from_list
 

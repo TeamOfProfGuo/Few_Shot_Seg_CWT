@@ -1,22 +1,15 @@
 # encoding:utf-8
-import pdb
 
 import os
-import time
 import random
 import torch
 import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
-from .model import MMN, SegLoss
-from .model.pspnet import get_model
-from .optimizer import get_optimizer, get_scheduler
-from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
+from .dataset.dataset import get_val_loader
+from .util import AverageMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
 

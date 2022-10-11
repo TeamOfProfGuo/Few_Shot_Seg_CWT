@@ -1,24 +1,17 @@
 # encoding:utf-8
-import pdb
 
 import os
 import time
 import random
-import numpy as np
-import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
-import torch.optim as optim
 from collections import defaultdict
 from .model import *
-from .model.pspnet import get_model
-from .model.transformer import CrossAttention, MHA, AttentionBlock, DynamicFusion
+from src.model.nets.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter, get_wt_loss, get_aux_loss
+from .util import intersectionAndUnionGPU, AverageMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 import argparse
 

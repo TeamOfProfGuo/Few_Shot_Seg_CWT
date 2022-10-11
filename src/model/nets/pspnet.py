@@ -1,14 +1,11 @@
 # encoding:utf-8
 
 import torch
-import numpy as np
 from torch import nn
-from operator import add
-from functools import reduce
 import torch.nn.functional as F
-from .resnet import resnet50, resnet101
-from .vgg import vgg16_bn
-from .model_util import get_corr, get_ig_mask, Adapt_SegLoss, SegLoss
+from src.model.nets.resnet import resnet50, resnet101
+from src.model.nets.vgg import vgg16_bn
+from src.model.model_util import get_corr, get_ig_mask, Adapt_SegLoss, SegLoss
 from torch.nn.utils.weight_norm import WeightNorm
 
 
@@ -128,17 +125,10 @@ class PSPNet(nn.Module):
                 nn.Dropout2d(p=args.dropout)
             )
 
-        if args.get('dist', 'dot') == 'dot':
-            self.classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1, bias=False)
-            if args.cls_type[0] == 'r':
-                WeightNorm.apply(self.classifier, 'weight', dim=0)  # [2, 512, 1, 1]
-        elif args.get('dist') in ['cos', 'cosN']:
-            self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
+        self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
 
         if args.get('inherit_base', False):
-            self.val_classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr+1, kernel_size=1, bias=False)
-
-        self.gamma = nn.Parameter(torch.tensor(0.2))
+            self.val_classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr + 1, kernel_size=1, bias=False)
 
     def freeze_bn(self):
         for m in self.modules():
@@ -168,6 +158,23 @@ class PSPNet(nn.Module):
         else:
             x_4 = self.layer4(x_3)
         return [x_1, x_2, x_3, x_4]
+
+    def get_feat_list(self, img,):
+        feats = dict()
+
+        # Layer 0 and layer1
+        feat = self.layer0(img)
+        feat = self.layer1(feat)
+
+        # Layer 2,3,4
+        for lid in [2, 3, 4]:
+            n_bottleneck = len(self.__getattr__('layer'+str(lid)))
+            for bid in range(n_bottleneck):
+                feat = self.__getattr__('layer'+str(lid))[bid](feat)
+                if str(lid) in self.args.get('all_lr', 'l') or bid == n_bottleneck-1:  # to decide whether to to return intermediate layers
+                    feats[lid] = feats.get(lid, []) + [feat]
+
+        return feat, feats
 
     def extract_features(self, x):
         x_4, feat_lst = self.get_feat_list(x)    # feat_lst 其实是 dict
@@ -221,114 +228,34 @@ class PSPNet(nn.Module):
             optimizer.step()
 
 
-    def outer_forward(self, f_q, f_s, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s=None, ret_corr=False):
-        # f_q/f_s:[1,512,h,w],  fq_fea/fs_fea:[1,2048,h,w],  s_label: [1,H,w]
-        bs, C, height, width = f_q.size()
-        proj_v = f_s.view(bs, -1, height * width)
-
-        # 基于attention, refine f_q, 并对query img做prediction
-        sim = get_corr(q=fq_fea, k=fs_fea)       # [1, 3600_q, 3600_s]
-        corr = torch.clone(sim).reshape(bs, height, width, height, width)                                  # return Corr
-
-        # mask ignored support pixels
-        ig_mask = get_ig_mask(sim, s_label, q_label, pd_q0, pd_s)    # [1, hw_s]
-
-        # calculate weighted output
-        ig_mask_full = ig_mask.unsqueeze(1).expand(sim.shape)        # [1, hw_q, hw_s]
-        sim[ig_mask_full == True] = 0.00001
-
-        if self.args.get('dist','dot')=='cos':
-            proj_v = F.normalize(proj_v, dim=1)
-            f_q = F.normalize(f_q, dim=1)
-
-        attention = F.softmax(sim * self.args.temp, dim=-1)
-        weighted_v = torch.bmm(proj_v, attention.permute(0, 2, 1))  # [1, 512, hw_k] * [1, hw_k, hw_q] -> [1, 512, hw_q]
-        weighted_v = weighted_v.view(bs, C, height, width)
-
-        out = (weighted_v * self.gamma + f_q)/(1+self.gamma)
-        pred_q_label = self.classifier(out)
-
-        if ret_corr == 'cr':
-            return pred_q_label, [corr, weighted_v]
-        elif ret_corr == 'cr_ig':
-            return pred_q_label, [corr, weighted_v], ig_mask
-        else:
-            return pred_q_label
-
-    def sampling(self, fq_fea, fs_fea, s_label, q_label=None, pd_q0=None, pd_s = None, ret_corr=False):
-        bs, C, height, width = fq_fea.size()
-
-        # 基于attention, refine f_q, 并对query img做prediction
-        sim = get_corr(q=fq_fea, k=fs_fea)   # [1, 3600 (q_hw), 3600(k_hw)]
-        corr = torch.clone(sim.reshape(bs, height, width, height, width))
-
-        # mask ignored pixels
-        ig_mask = get_ig_mask(sim, s_label, q_label, pd_q0, pd_s)  # # [B, 3600_s]
-
-        if ret_corr:
-            return ig_mask, corr
-        return ig_mask    # [B, 3600]
-
-    def get_feat_list(self, img,):
-        feats = dict()
-
-        # Layer 0 and layer1
-        feat = self.layer0(img)
-        feat = self.layer1(feat)
-
-        # Layer 2,3,4
-        for lid in [2, 3, 4]:
-            n_bottleneck = len(self.__getattr__('layer'+str(lid)))
-            for bid in range(n_bottleneck):
-                feat = self.__getattr__('layer'+str(lid))[bid](feat)
-                if str(lid) in self.args.get('all_lr', 'l') or bid == n_bottleneck-1:  # to decide whether to to return intermediate layers
-                    feats[lid] = feats.get(lid, []) + [feat]
-
-        return feat, feats
-
-
 class CosCls(nn.Module):
-    def __init__(self, in_dim=512, n_classes=2, cls_type = '0000'):
+    def __init__(self, in_dim=512, n_classes=2, cls_type = '00000'):
         super(CosCls, self).__init__()
-        self.WeightNormR, self.weight_norm, self.bias, self.temp = parse_param_coscls(cls_type)
+        self.xNorm, self.bias, self.WeightNormR, self.weight_norm, self.temp = parse_param_coscls(cls_type)
         self.cls = nn.Conv2d(in_dim, n_classes, kernel_size=1, bias=self.bias)
         if self.WeightNormR:
-            WeightNorm.apply(self.cls, 'weight', dim=0) #split the weight update component to direction and norm
-        if self.temp:
-            self.scale_factor = nn.Parameter(torch.tensor(2.0))
-        else:
-            self.scale_factor = 2.0
+            WeightNorm.apply(self.cls, 'weight', dim=0)  # split the weight update component to direction and norm
 
     def forward(self, x):
-        x_norm = F.normalize(x, p=2, dim=1, eps=0.00001)  # [B, ch, h, w]
+        if self.xNorm:
+            x = F.normalize(x, p=2, dim=1, eps=0.00001)  # [B, ch, h, w]
         if self.weight_norm:
             self.cls.weight.data = F.normalize(self.cls.weight.data, p=2, dim=1, eps=0.00001)
 
-        cos_dist = self.cls(x_norm)   #matrix product by forward function, but when using WeightNorm, this also multiply the cosine distance by a class-wise learnable norm, see the issue#4&8 in the github
-        scores = self.scale_factor * (cos_dist)
+        cos_dist = self.cls(x)   #matrix product by forward function, but when using WeightNorm, this also multiply the cosine distance by a class-wise learnable norm, see the issue#4&8 in the github
+        scores = self.temp * cos_dist
         return scores
 
     def reset_parameters(self):   # 与torch自己的method同名
         self.cls.reset_parameters()
 
 
-
 def parse_param_coscls(cls_type):
+    xNorm_dt = {'x': True, '0': False, 'o':False}
     WeightNormR_dt = {'r': True, '0': False, 'o': False}
     weight_norm_dt = {'n': True, '0': False, 'o': False}
     bias_dt = {'b': True, '0': False, 'o': False}
-    temp_dt = {'t': True, '0': False, 'o': False}
-    print('weight norm Regular {} weight norm {}, bias {}, temp {}'.format(
-        WeightNormR_dt[cls_type[0]], weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]] ))
-    return WeightNormR_dt[cls_type[0]], weight_norm_dt[cls_type[1]], bias_dt[cls_type[2]], temp_dt[cls_type[3]]
-
-
-def get_classifier(args, num_classes=None):
-    if num_classes is None:
-        num_classes = args.num_classes_tr
-    in_dim = args.bottleneck_dim
-
-    if args.get('dist', 'dot') == 'dot':
-        return nn.Conv2d(in_dim, num_classes, kernel_size=1, bias=False)
-    elif args.get('dist') == 'cos' or args.get('dist') == 'cosN':
-        return CosCls(in_dim=in_dim, n_classes=num_classes, cls_type=args.cls_type)
+    temp = 1 if cls_type[4] in ['0', 'o'] else int(cls_type[4])
+    print('classifier X_norm: {} weight_norm_Regular: {} weight_norm: {}, bias: {}, temp: {}'.format( xNorm_dt[cls_type[0]],
+          bias_dt[cls_type[1]], WeightNormR_dt[cls_type[2]], weight_norm_dt[cls_type[3]], temp))
+    return xNorm_dt[cls_type[0]], bias_dt[cls_type[1]], WeightNormR_dt[cls_type[2]], weight_norm_dt[cls_type[3]], temp

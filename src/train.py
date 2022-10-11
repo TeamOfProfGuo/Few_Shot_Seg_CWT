@@ -1,6 +1,5 @@
 # encoding:utf-8
 
-import pdb
 import os
 import random
 import numpy as np
@@ -11,17 +10,12 @@ import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
 import torch.optim as optim
-from collections import defaultdict
-from .model.pspnet import get_model
-from .model.transformer import MultiHeadAttentionOne
-from .optimizer import get_optimizer, get_scheduler
+from src.model.nets.pspnet import get_model
+from src.model.base.transformer import MultiHeadAttentionOne
+from .optimizer import get_optimizer
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, get_model_dir, AverageMeter, get_model_dir_trans
-from .util import setup, cleanup, to_one_hot, batch_intersectionAndUnionGPU, find_free_port
+from .util import intersectionAndUnionGPU, AverageMeter, get_model_dir_trans
 from .test import validate_transformer
-from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.distributed as dist
-import torch.multiprocessing as mp
 import argparse
 from typing import Tuple
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list

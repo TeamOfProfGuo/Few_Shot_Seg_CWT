@@ -2,15 +2,14 @@
 
 import torch
 import torch.nn as nn
-import numpy as np
 import torch.nn.functional as F
-from .conv4d import CenterPivotConv4d, Conv4d
-from .base import SpatialContextEncoder
-from .model_util import get_corr
+from src.model.base.conv4d import CenterPivotConv4d, Conv4d
+from src.model.base import SpatialContextEncoder
+from src.model.model_util import get_corr
 
-from .base.correlation import Correlation
-from .base.geometry import Geometry
-from .base.chm import CHM4d, CHM6d
+from src.model.base.correlation import Correlation
+from src.model.base.geometry import Geometry
+from src.model.base.chm import CHM4d, CHM6d
 
 conv4_dt = {'cv4': Conv4d, 'red': CenterPivotConv4d}
 
