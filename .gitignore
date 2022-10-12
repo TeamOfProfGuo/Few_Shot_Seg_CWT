@@ -12,3 +12,5 @@ pic/
 models/__pychache__/
 .idea/**
 src/__pychache__/
+results
+pretrained_models

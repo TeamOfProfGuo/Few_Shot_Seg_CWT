@@ -1,17 +1,18 @@
-
-import os
-import cv2
 import random
 from torchvision import transforms
 import matplotlib.pyplot as plt
 from src.model import *
 from src.model.nets.pspnet import get_model
-from src.optimizer import get_optimizer, get_scheduler
+from src.optimizer import get_optimizer
 from src.dataset.dataset import get_val_loader, get_train_loader
-from src.util import intersectionAndUnionGPU, AverageMeter
+from src.util import intersectionAndUnionGPU
 import argparse
 from src.util import load_cfg_from_cfg_file, merge_cfg_from_list
 
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+from mask import Masker
+masker = Masker()
 # =================== get config ===================
 """  
 DATA= pascal 
@@ -21,12 +22,11 @@ LAYERS= 50
 SHOT= 1                         
 """
 
-arg_input = ' --config config_files/pascal_match.yaml   \
-  --opts train_split 0   layers 50    shot 1   trans_lr 0.001   cls_lr 0.1    batch_size 1  \
-  batch_size_val 1   epochs 20     test_num 1000 '
+arg_input = ' --config config_files/pascal_mmn.yaml   \
+  --opts  layers 50   trans_lr 0.001   cls_lr 0.1    batch_size 1   batch_size_val 1   epochs 20   test_num 1000 '
 
 parser = argparse.ArgumentParser(description='Training classifier weight transformer')
-parser.add_argument('--config', type=str, required=True, help='config_files/pascal_asy.yaml')
+parser.add_argument('--config', type=str, required=True, help='config_files/pascal_mmn.yaml')
 parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
 args = parser.parse_args(arg_input.split())
 
@@ -37,8 +37,10 @@ if args.opts is not None:
 args = cfg
 print(args)
 
-args.dist = 'cosN'
-args.rmid = 'mid4'
+args.shot = 1
+args.train_split = 3
+args.cls_type = 'ooooo'
+
 # ====================================  main ================================================
 random.seed(args.manual_seed)
 np.random.seed(args.manual_seed)
@@ -53,19 +55,17 @@ if args.resume_weights:
     if os.path.isfile(fname):
         print("=> loading weight '{}'".format(fname))
         pre_weight = torch.load(fname, map_location=lambda storage, location: storage)['state_dict']
-        pre_dict = model.state_dict()
+        model_dict = model.state_dict()
+        pre_cls_wt = pre_weight['classifier.weight']  # [16, 512, 1, 1]
 
-        for index, key in enumerate(pre_dict.keys()):
+        for index, key in enumerate(model_dict.keys()):
             if 'classifier' not in key and 'gamma' not in key:
-                if pre_dict[key].shape == pre_weight['module.' + key].shape:
-                    pre_dict[key] = pre_weight['module.' + key]
-                    print('load ' + key)
+                if model_dict[key].shape == pre_weight[key].shape:
+                    model_dict[key] = pre_weight[key]
                 else:
-                    print('Pre-trained shape and model shape for {}: {}, {}'.format(
-                        key, pre_weight['module.' + key].shape, pre_dict[key].shape))
-                    continue
+                    print('Pre-trained shape and model shape dismatch for {}'.format(key))
 
-        model.load_state_dict(pre_dict, strict=True)
+        model.load_state_dict(model_dict, strict=True)
         print("=> loaded weight '{}'".format(fname))
     else:
         print("=> no weight found at '{}'".format(fname))
@@ -89,120 +89,151 @@ if args.resume_weights:
 # ====== Data  ======
 args.workers = 0
 args.augmentations = ['hor_flip', 'resize_np']
+args.distributed = False
 
 train_loader, train_sampler = get_train_loader(args)   # split 0: len 4760, cls[6,~20]在pascal train中对应4760个图片， 先随机选图片，再根据图片选cls
 episodic_val_loader, _ = get_val_loader(args)          # split 0: len 364， 对应cls[1,~5],在pascal val中对应364个图片
 
 # ====== Transformer ======
-if args.crm_type == 'chm':
-    FusionNet = CHMLearner(ktype='psi', feat_dim=2048, temp=args.temp)
-    print('model setting kernel type {}, input feature dim {}'.format('psi', 2048))
-else:
-    FusionNet = MatchNet(temp=args.temp, cv_type='red', sym_mode=True)
-optimizer_meta = get_optimizer(args, [dict(params=FusionNet.parameters(), lr=args.trans_lr * args.scale_lr)])
-scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
-fname = './results/fuse_pascal/resnet50/split0_shot1/match_l4_nig/best1.pth'
+Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim)
+optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
+# scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
+
+fname = './results/msc_pascal/resnet50/split0_shot1/dotr_wa/best1.pth'
 pre_weight = torch.load(fname, map_location=lambda storage, location: storage)['state_dict']
-FusionNet.load_state_dict(pre_weight, strict=True)
+Trans.load_state_dict(pre_weight, strict=True)
+
 
 # ====== Metrics initialization ======
 max_val_mIoU = 0.
 # ================================================ Training ================================================
-epoch = 1
-train_loss_meter = AverageMeter()
-train_iou_meter = AverageMeter()
-iterable_train_loader = iter(episodic_val_loader)
+iterable_train_loader = iter(train_loader,)
 
 # ====== iteration starts
 qry_img, q_label, spt_imgs, s_label, subcls, sl, ql = iterable_train_loader.next()
 spt_imgs = spt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
 s_label = s_label.squeeze(0).long() # [n_shots, img_size, img_size]
 
+
 # ====== 可视化图片 ======
 invTrans = transforms.Compose([transforms.Normalize(mean=[0., 0., 0.], std=[1/0.229, 1/0.224, 1/0.225]),
                                transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
                                ])
 inv_s = invTrans(spt_imgs[0])
-for i in range(1, 473+1, 8):
-    for j in range(1, 473+1, 8):
-        inv_s[:, i-1, j-1] = torch.tensor([0, 1.0, 0])
 plt.imshow(inv_s.permute(1, 2, 0))
 
 inv_q = invTrans(qry_img[0])
-for i in range(1, 473+1, 8):
-    for j in range(1, 473+1, 8):
-        inv_q[:, i-1, j-1] = torch.tensor([0, 1.0, 0])
-inv_q[:, (34-1)*8, (37-1)*8] = torch.tensor([1.0, 0, 0])
 plt.imshow(inv_q.permute(1, 2, 0))
 
 # ====== Phase 1: Train the binary classifier on support samples ======
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+# ================== inner loop
 model.eval()
 with torch.no_grad():
     f_s, fs_lst = model.extract_features(spt_imgs)
 model.inner_loop(f_s, s_label)
 
 # ====== Phase 2: Train the transformer to update the classifier's weights ======
-model.eval()
 with torch.no_grad():
     f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-    pd_q0 = model.classifier(f_q)
-    pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-    pd_q_mask0 = pd_q0.argmax(dim=1)
-    pred_q_mask0 = pred_q0.argmax(dim=1)
+    pred_q0 = model.classifier(f_q)
+    pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-    pd_s = model.classifier(f_s[0:1])
-    pred_s = F.interpolate(pd_s, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-    pred_s_mask = pred_s.argmax(dim=1)
+mask = masker.mask_to_rgb(pred_q0.argmax(1).squeeze())
+plt.imshow(mask)
+plt.imshow(F.softmax(pred_q0, dim=1)[0,1])
+plt.imshow(pred_q0.argmax(1).squeeze())
 
-# ================================== Dynamic Fusion  ==================================
-if args.rmid == 'nr':
-    idx = -1
-elif args.rmid in ['mid2', 'mid3', 'mid4']:
-    idx = int(args.rmid[-1]) - 2
-fs_fea = fs_lst[idx]  # [1, 2048, 60, 60]
-fq_fea = fq_lst[idx]  # [1, 2048, 60, 60]
-with torch.no_grad():
-    pd_q_b, ret_corr, ig_mask = model.outer_forward(f_q, f_s, fq_fea, fs_fea, s_label, q_label, pd_q0, pd_s, ret_corr='cr_ig')
-    corr, weighted_v_b = ret_corr
-    pd_q1_b = model.classifier(weighted_v_b)
-    pred_q1_b = F.interpolate(pd_q1_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)     # weighted_v based on original corr matrix
-    pred_q_b = F.interpolate(pd_q_b, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred 0', np.round( (intersection0 / (union0 + 1e-10)).numpy() , 3) )
 
-if not args.ignore:
-    ig_mask = None
-if args.crm_type == 'chm':
-    fs_fea = F.interpolate(fs_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-    fq_fea = F.interpolate(fq_fea, scale_factor=0.5, mode='bilinear', align_corners=True)
-    weighted_v = FusionNet(fq_fea, fs_fea, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask, ret_corr=False)
-else:
-    weighted_v = FusionNet(corr=corr, v=f_s.view(f_s.shape[:2] + (-1,)), ig_mask=ig_mask)
 
-pd_q1 = model.classifier(weighted_v)
+attn, _, att_out = Trans(fq_lst, fs_lst, f_q, f_s, ret_attn=True)
+pd_q1 = model.classifier(att_out)
 pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-for wt in [0.2, 0.3, 0.4]:
-    with torch.no_grad():
-        out = weighted_v * wt + f_q * (1-wt)
-        pd_q = model.classifier(out)
-        pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+confidence = (pred_q1.argmax(1) == q_label)|(q_label==255)
+plt.imshow(confidence.squeeze().float())
 
-    # ==== 比较结果 base vs att ====
-    print('====', wt)
-    intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
-    print('pred 0', np.round( (intersection0 / (union0 + 1e-10)).numpy() , 3) )
+va, idx = torch.max(attn, dim=-1)
+va = torch.mean(attn, dim=-1)
+plt.imshow(va.data.view(60, 60).numpy())
 
-    intersection1, union1, target1 = intersectionAndUnionGPU(pred_q1.argmax(1), q_label, args.num_classes_tr, 255)
-    print('pred 1', np.round( (intersection1 / (union1 + 1e-10)).numpy(), 3))
 
-    intersection1b, union1b, target1b = intersectionAndUnionGPU(pred_q1_b.argmax(1), q_label, args.num_classes_tr, 255)
-    print('pred 1b', np.round( (intersection1b / (union1b + 1e-10)).numpy(), 3))
+plt.imshow(F.softmax(pred_q1, dim=1).data[0,1])
+plt.imshow(pred_q1.argmax(1).squeeze())
 
-    intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
-    print('pred', np.round( (intersection / (union + 1e-10)).numpy(), 3))
 
-    intersection, union, target = intersectionAndUnionGPU(pred_q_b.argmax(1), q_label, args.num_classes_tr, 255)
-    print('pred b', np.round( (intersection / (union + 1e-10)).numpy(), 3))
+intersection1, union1, target1 = intersectionAndUnionGPU(pred_q1.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred 1', np.round( (intersection1 / (union1 + 1e-10)).numpy() , 3) )
+
+
+# ====================================================== 对比实验 ======================================================
+new_classifier = nn.Conv2d(model.bottleneck_dim, 2, kernel_size=1, bias=True)
+
+# optimizer and loss function
+optimizer = torch.optim.SGD(new_classifier.parameters(), lr=args.cls_lr)
+
+criterion = SegLoss(loss_type=args.inner_loss_type, num_cls=2, fg_idx=1)
+
+
+s_label_copy = s_label.clone()
+s_label_copy[s_label_copy==7] = 1
+s_label_copy[ s_label_copy==13] =0
+
+# inner loop 学习 classifier的params
+for index in range(args.adapt_iter):
+    pred_s_label = new_classifier(f_s)  # [n_shot, 2(cls), 60, 60]
+    pred_s_label = F.interpolate(pred_s_label, size=s_label_copy.size()[1:],mode='bilinear', align_corners=True)
+    s_loss = criterion(pred_s_label, s_label_copy)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+    optimizer.zero_grad()
+    s_loss.backward()
+    optimizer.step()
+
+# ====== Phase 2: Train the transformer to update the classifier's weights ======
+model.eval()
+with torch.no_grad():
+
+    pd_q0 = new_classifier(f_q)
+    pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+    pred_q_mask0 = pred_q0.argmax(dim=1)
+
+out_mask = masker.mask_to_rgb(pred_q_mask0.squeeze())
+plt.imshow(out_mask)
+
+
+
+
+# ================================== Dynamic Fusion  ==================================
+
+Trans.train()
+fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s)
+pd_q1 = model.classifier(att_fq)
+pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+
+criterion = SegLoss(loss_type=args.loss_type)
+q_loss1 = criterion(pred_q1, q_label.long())
+
+
+# ==== 比较结果 base vs att ====
+print('====', wt)
+intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred 0', np.round( (intersection0 / (union0 + 1e-10)).numpy() , 3) )
+
+intersection1, union1, target1 = intersectionAndUnionGPU(pred_q1.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred 1', np.round( (intersection1 / (union1 + 1e-10)).numpy(), 3))
+
+intersection1b, union1b, target1b = intersectionAndUnionGPU(pred_q1_b.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred 1b', np.round( (intersection1b / (union1b + 1e-10)).numpy(), 3))
+
+intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred', np.round( (intersection / (union + 1e-10)).numpy(), 3))
+
+intersection, union, target = intersectionAndUnionGPU(pred_q_b.argmax(1), q_label, args.num_classes_tr, 255)
+print('pred b', np.round( (intersection / (union + 1e-10)).numpy(), 3))
 
 # ========= Loss function: Dynamic class weights used for query image only during training   =========
 q_label_arr = q_label.cpu().numpy().copy()  # [n_task, img_size, img_size]
@@ -221,63 +252,95 @@ if args.scheduler == 'cosine':
 
 torch.max(FusionNet.NeighConsensus.conv[0].conv1.weight.grad)
 
-# =================== mask query  =====================
-sim = corr
+# ===================================== evaluation  ===============================================================
 
 
-q_mask = F.interpolate(q_label.unsqueeze(1).float(), size=f_q.shape[-2:], mode='nearest').squeeze(1)  # [1,1,h,w]
-q_mask = (q_mask != 255.0)
+iter_loader = iter(episodic_val_loader,)
 
-q_mask = q_mask * (pd_q_mask0==1)             # query 根据 pred_mask 选取前景或背景
-q_mask = q_mask.view(q_mask.shape[0], -1, 1)  # [n_shot, 1, hw]
-q_mask = q_mask.expand(sim.shape)             # [1, q_hw, hw]
+qry_img, q_label, spt_imgs, s_label, subcls, spprt_oris, qry_oris = iter_loader.next()
+spt_imgs = spt_imgs.squeeze(0)  # [n_shots, 3, img_size, img_size]
+s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
+s_label_copy = s_label.clone()
 
-sim0 = sim[q_mask].reshape(1, -1, 3600)    # query image 前景或背景 overall sim score 分布
-sim0 = torch.mean(sim0, dim=1)
 
-sim0 = sim[:,(34-1)*60+37-1]               # 只看query image 单点的 sim score的分布
+# ====== 可视化图片 ======
+invTrans = transforms.Compose([transforms.Normalize(mean=[0., 0., 0.], std=[1/0.229, 1/0.224, 1/0.225]),
+                               transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
+                               ])
+inv_s = invTrans(spt_imgs[0])
+for i in range(1, 473+1, 8):
+    for j in range(1, 473+1, 8):
+        inv_s[:, i-1, j-1] = torch.tensor([0, 1.0, 0])
+plt.imshow(inv_s.permute(1, 2, 0))
 
-a = sim0.numpy().reshape(60,60)
-print('max {:.4f}, mean {:.4f}, min {:.4f}'.format(np.max(a), np.mean(a), np.min(a)))
-a = np.uint8((a - np.min(a)) / (np.max(a) - np.min(a)) * 255)
-heatmap = cv2.applyColorMap(cv2.resize(a, (473, 473)), cv2.COLORMAP_JET)
-img = inv_s.permute(1, 2, 0).numpy()*255
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-result = heatmap * 0.3 + img * 0.7
-cv2.imwrite('CAM.jpg', result)
-cv2.imwrite('heatmap.jpg', heatmap)
+inv_q = invTrans(qry_img[0])
+for i in range(1, 473+1, 8):
+    for j in range(1, 473+1, 8):
+        inv_q[:, i-1, j-1] = torch.tensor([0, 1.0, 0])
+inv_q[:, (51-1)*8, (49-1)*8] = torch.tensor([1.0, 0, 0])
+plt.imshow(inv_q.permute(1, 2, 0))
 
-# support image pred mask (reflect quality of f_s)
-mask = np.uint8(200 * pred_s_mask.squeeze().numpy())
-heatmap = cv2.applyColorMap(cv2.resize(mask, (473, 473)), cv2.COLORMAP_JET)
 
-s_label_mask = torch.clone(s_label)
-mask = np.uint8(200 * s_label_mask.squeeze().numpy())
-heatmap = cv2.applyColorMap(cv2.resize(mask, (473, 473)), cv2.COLORMAP_JET)
+# =======
+reset_cls_wt(model.val_classifier, pre_cls_wt, args.num_classes_tr, idx_cls=args.num_classes_tr)
+model.eval()
+with torch.no_grad():
+    f_s, fs_lst = model.extract_features(spt_imgs)
+    out = model.val_classifier(f_s)  # [1, 17, 60, 60]
+    out = F.interpolate(out, size=(473, 473), mode='bilinear', align_corners=True)
 
-ig_mask = F.interpolate( (ig_mask1 | ig_mask2 | ig_mask3).view(1, 1, 60, 60).float(), size=(473, 473), mode='nearest')
-ig_mask = np.uint8(200 * ig_mask.squeeze().numpy())
-heatmap = cv2.applyColorMap(cv2.resize(ig_mask, (473, 473)), cv2.COLORMAP_JET)
+s_label = reset_spt_label(s_label, pred=out, idx_cls=args.num_classes_tr)
+mask = masker.mask_to_rgb(s_label.squeeze())
+plt.imshow(mask)
+model.increment_inner_loop(f_s, s_label, cls_idx=args.num_classes_tr, meta_train=False)
 
-# =================== mask support ===================
+with torch.no_grad():
+    f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+    pred_q0 = model.val_classifier(f_q)
+    pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-# query image pred mask (reflect quality of f_s)
-mask = np.uint8(200 * pred_q0.argmax(1).squeeze().numpy())
-heatmap = cv2.applyColorMap(cv2.resize(mask, (473, 473)), cv2.COLORMAP_JET)
+mask = masker.mask_to_rgb(pred_q0.argmax(1).squeeze())
+plt.imshow(mask)
 
-mask = np.uint8(200 * pred_q1_b.argmax(1).squeeze().numpy())
-heatmap = cv2.applyColorMap(cv2.resize(mask, (473, 473)), cv2.COLORMAP_JET)
 
-soft_mask = np.uint8(200* F.softmax(pred_q1, dim=1)[0,1].numpy())
-heatmap = cv2.applyColorMap(cv2.resize(soft_mask, (473, 473)), cv2.COLORMAP_JET)
+pred_q0 = compress_pred(pred_q0, idx_cls=args.num_classes_tr, input_type='lg')  #
 
-q_label_mask = torch.clone(q_label)
-q_label_mask[q_label==255] = 0
-mask = np.uint8(200 * q_label_mask.squeeze().numpy())
-heatmap = cv2.applyColorMap(cv2.resize(mask, (473, 473)), cv2.COLORMAP_JET)
+intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
+print('pred 0', np.round( (intersection0 / (union0 + 1e-10)).numpy() , 3) )
 
-img = inv_q.permute(1, 2, 0).numpy()*255
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-result = heatmap * 0.3 + img * 0.7
-cv2.imwrite('CAM.jpg', result)
-cv2.imwrite('heatmap.jpg', heatmap)
+
+# ====================================================== 对比实验 ======================================================
+new_classifier = nn.Conv2d(model.bottleneck_dim, 2, kernel_size=1, bias=True)
+
+# optimizer and loss function
+optimizer = torch.optim.SGD(new_classifier.parameters(), lr=self.args.cls_lr)
+
+criterion = SegLoss(loss_type=args.inner_loss_type, num_cls=2, fg_idx=1)
+
+
+# inner loop 学习 classifier的params
+for index in range(args.adapt_iter):
+    pred_s_label = new_classifier(f_s)  # [n_shot, 2(cls), 60, 60]
+    pred_s_label = F.interpolate(pred_s_label, size=s_label_copy.size()[1:],mode='bilinear', align_corners=True)
+    s_loss = criterion(pred_s_label, s_label_copy)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+    optimizer.zero_grad()
+    s_loss.backward()
+    optimizer.step()
+
+# ====== Phase 2: Train the transformer to update the classifier's weights ======
+model.eval()
+with torch.no_grad():
+
+    pd_q0 = new_classifier(f_q)
+    pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+    pred_q_mask0 = pred_q0.argmax(dim=1)
+
+out_mask = masker.mask_to_rgb(pred_q_mask0.squeeze())
+plt.imshow(out_mask)
+
+intersection0, union0, target0 = intersectionAndUnionGPU(pred_q0.argmax(1), q_label, 2, 255)
+print('pred 0', np.round( (intersection0 / (union0 + 1e-10)).numpy() , 3) )
+
+
+out_mask = masker.mask_to_rgb(q_label.squeeze())
+plt.imshow(out_mask)

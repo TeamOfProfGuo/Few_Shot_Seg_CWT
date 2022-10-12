@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from src.model.base.match import MatchNet
-from .msm import WeightAverage
+from .base import WeightAverage
 from .model_util import get_corr
 
 
