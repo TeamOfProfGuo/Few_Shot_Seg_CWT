@@ -8,7 +8,6 @@ import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
 from .model import *
-from src.model.nets.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter

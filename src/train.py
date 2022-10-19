@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
 import torch.optim as optim
-from src.model.nets.pspnet import get_model
+from src.model import get_model
 from src.model.base.transformer import MultiHeadAttentionOne
 from .optimizer import get_optimizer
 from .dataset.dataset import get_val_loader, get_train_loader

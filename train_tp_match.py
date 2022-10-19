@@ -2,7 +2,7 @@ import random
 from torchvision import transforms
 import matplotlib.pyplot as plt
 from src.model import *
-from src.model.nets.pspnet import get_model
+from src.model.nets import get_model
 from src.optimizer import get_optimizer
 from src.dataset.dataset import get_val_loader, get_train_loader
 from src.util import intersectionAndUnionGPU

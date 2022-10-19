@@ -5,63 +5,8 @@ from torch import nn
 import torch.nn.functional as F
 from src.model.nets.resnet import resnet50, resnet101
 from src.model.nets.vgg import vgg16_bn
-from src.model.model_util import get_corr, get_ig_mask, Adapt_SegLoss, SegLoss
-from torch.nn.utils.weight_norm import WeightNorm
-
-
-def get_model(args) -> nn.Module:
-    return PSPNet(args, zoom_factor=8, use_ppm=True)
-
-
-class PPM(nn.Module):
-    def __init__(self, in_dim, reduction_dim, bins):
-        super(PPM, self).__init__()
-        self.features = []
-        for bin in bins:
-            self.features.append(
-                nn.Sequential(
-                nn.AdaptiveAvgPool2d(bin),
-                nn.Conv2d(in_dim, reduction_dim, kernel_size=1, bias=False),
-                nn.BatchNorm2d(reduction_dim),
-                nn.ReLU(inplace=True))
-            )
-        self.features = nn.ModuleList(self.features)
-
-    def forward(self, x):
-        x_size = x.size()
-        out = [x]
-        for f in self.features:
-            out.append(F.interpolate(f(x), x_size[2:], mode='bilinear', align_corners=True))
-        return torch.cat(out, 1)
-
-
-def get_vgg16_layer(model):
-    layer0_idx = range(0, 7)
-    layer1_idx = range(7, 14)
-    layer2_idx = range(14, 24)
-    layer3_idx = range(24, 34)
-    layer4_idx = range(34, 43)
-    layers_0 = []
-    layers_1 = []
-    layers_2 = []
-    layers_3 = []
-    layers_4 = []
-    for idx in layer0_idx:
-        layers_0 += [model.features[idx]]
-    for idx in layer1_idx:
-        layers_1 += [model.features[idx]]
-    for idx in layer2_idx:
-        layers_2 += [model.features[idx]]
-    for idx in layer3_idx:
-        layers_3 += [model.features[idx]]
-    for idx in layer4_idx:
-        layers_4 += [model.features[idx]]
-    layer0 = nn.Sequential(*layers_0)
-    layer1 = nn.Sequential(*layers_1)
-    layer2 = nn.Sequential(*layers_2)
-    layer3 = nn.Sequential(*layers_3)
-    layer4 = nn.Sequential(*layers_4)
-    return layer0, layer1, layer2, layer3, layer4
+from src.model.model_util import Adapt_SegLoss, SegLoss
+from .modules import PPM, get_vgg16_layer, CosCls, ProjectionHead
 
 
 class PSPNet(nn.Module):
@@ -76,6 +21,7 @@ class PSPNet(nn.Module):
         self.m_scale = args.m_scale
         self.bottleneck_dim = args.bottleneck_dim
         self.rmid = args.get('rmid', None)     # 是否返回中间层
+        self.contrast = args.get('contrast', False)
         self.args = args                 # all_lr
 
         resnet_kwargs = {}
@@ -117,9 +63,8 @@ class PSPNet(nn.Module):
                 fea_dim = 512
         if use_ppm:
             self.ppm = PPM(fea_dim, int(fea_dim/len(args.bins)), args.bins)
-            fea_dim *= 2
             self.bottleneck = nn.Sequential(
-                nn.Conv2d(fea_dim, self.bottleneck_dim, kernel_size=3, padding=1, bias=False),
+                nn.Conv2d(fea_dim*2, self.bottleneck_dim, kernel_size=3, padding=1, bias=False),
                 nn.BatchNorm2d(self.bottleneck_dim),
                 nn.ReLU(inplace=True),
                 nn.Dropout2d(p=args.dropout)
@@ -129,6 +74,9 @@ class PSPNet(nn.Module):
 
         if args.get('inherit_base', False):
             self.val_classifier = nn.Conv2d(self.bottleneck_dim, args.num_classes_tr + 1, kernel_size=1, bias=False)
+
+        if self.contrast:
+            self.proj_head = ProjectionHead(in_dim=fea_dim, proj_dim=256)
 
     def freeze_bn(self):
         for m in self.modules():
@@ -143,21 +91,22 @@ class PSPNet(nn.Module):
 
         x, fea_lst = self.extract_features(x)
         x = self.classify(x, (H, W))
-        if self.rmid:
-            return x, fea_lst
+
+        if self.contrast:
+            return x, self.proj_head(fea_lst[4][-1])
         else:
             return x
 
-    def get_feat_backbone(self, x):
-        x = self.layer0(x)
-        x_1 = self.layer1(x)
-        x_2 = self.layer2(x_1)
-        x_3 = self.layer3(x_2)
-        if self.rmid == 'nr':
-            x_4, x4_nr = self.layer4(x_3)
+    def extract_features(self, x):
+        x_4, feat_lst = self.get_feat_list(x)    # feat_lst 其实是 dict
+
+        x = self.ppm(x_4)
+        x = self.bottleneck(x)
+
+        if ('l' in self.rmid or 'mid' in self.rmid) or self.contrast:
+            return x, feat_lst
         else:
-            x_4 = self.layer4(x_3)
-        return [x_1, x_2, x_3, x_4]
+            return x, []
 
     def get_feat_list(self, img,):
         feats = dict()
@@ -175,17 +124,6 @@ class PSPNet(nn.Module):
                     feats[lid] = feats.get(lid, []) + [feat]
 
         return feat, feats
-
-    def extract_features(self, x):
-        x_4, feat_lst = self.get_feat_list(x)    # feat_lst 其实是 dict
-
-        x = self.ppm(x_4)
-        x = self.bottleneck(x)
-
-        if self.rmid is not None and ('l' in self.rmid or 'mid' in self.rmid):
-            return x, feat_lst
-        else:
-            return x, []
 
     def classify(self, features, shape):
         x = self.classifier(features)
@@ -226,36 +164,3 @@ class PSPNet(nn.Module):
             optimizer.zero_grad()
             s_loss.backward()
             optimizer.step()
-
-
-class CosCls(nn.Module):
-    def __init__(self, in_dim=512, n_classes=2, cls_type = '00000'):
-        super(CosCls, self).__init__()
-        self.xNorm, self.bias, self.WeightNormR, self.weight_norm, self.temp = parse_param_coscls(cls_type)
-        self.cls = nn.Conv2d(in_dim, n_classes, kernel_size=1, bias=self.bias)
-        if self.WeightNormR:
-            WeightNorm.apply(self.cls, 'weight', dim=0)  # split the weight update component to direction and norm
-
-    def forward(self, x):
-        if self.xNorm:
-            x = F.normalize(x, p=2, dim=1, eps=0.00001)  # [B, ch, h, w]
-        if self.weight_norm:
-            self.cls.weight.data = F.normalize(self.cls.weight.data, p=2, dim=1, eps=0.00001)
-
-        cos_dist = self.cls(x)   #matrix product by forward function, but when using WeightNorm, this also multiply the cosine distance by a class-wise learnable norm, see the issue#4&8 in the github
-        scores = self.temp * cos_dist
-        return scores
-
-    def reset_parameters(self):   # 与torch自己的method同名
-        self.cls.reset_parameters()
-
-
-def parse_param_coscls(cls_type):
-    xNorm_dt = {'x': True, '0': False, 'o':False}
-    WeightNormR_dt = {'r': True, '0': False, 'o': False}
-    weight_norm_dt = {'n': True, '0': False, 'o': False}
-    bias_dt = {'b': True, '0': False, 'o': False}
-    temp = 1 if cls_type[4] in ['0', 'o'] else int(cls_type[4])
-    print('classifier X_norm: {} weight_norm_Regular: {} weight_norm: {}, bias: {}, temp: {}'.format( xNorm_dt[cls_type[0]],
-          bias_dt[cls_type[1]], WeightNormR_dt[cls_type[2]], weight_norm_dt[cls_type[3]], temp))
-    return xNorm_dt[cls_type[0]], bias_dt[cls_type[1]], WeightNormR_dt[cls_type[2]], weight_norm_dt[cls_type[3]], temp

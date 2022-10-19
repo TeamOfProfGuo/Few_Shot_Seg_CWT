@@ -17,6 +17,7 @@ from torch import Tensor
 from src.model import get_model
 
 from .test import episodic_validate
+from .loss import ContrastCELoss
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter
@@ -95,6 +96,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ====== Training  ======
     log('==> Start training')
+    criterion = ContrastCELoss(args = args)
     for epoch in range(args.epochs):
 
         loss_meter = AverageMeter()
@@ -108,7 +110,9 @@ def main(args: argparse.Namespace) -> None:
                 images = images.cuda()  # [1, 1, 3, h, w]
                 gt = gt.cuda()  # [1, 1, h, w]
 
-            loss = compute_loss(args=args, model=model, images=images, targets=gt.long(), num_classes=args.num_classes_tr)
+            logits, embedding = model(images)
+            loss = criterion(logits=logits, target=gt.long(), embedding=embedding, with_embed=True)
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -136,83 +140,25 @@ def main(args: argparse.Namespace) -> None:
         loss_meter.reset()
 
         # pdb.set_trace()
-        val_Iou, val_loss = validate_fn(args=args, val_loader=val_loader, model=model, use_callback=False)
-        writer.add_scalar("mean_iou/val", val_Iou, epoch)
-        writer.add_scalar("pixel accuracy/val", val_loss, epoch)
+        if epoch%2==0 or epoch>=50:
+            val_Iou, val_loss = validate_fn(args=args, val_loader=val_loader, model=model, use_callback=False)
+            writer.add_scalar("mean_iou/val", val_Iou, epoch)
+            writer.add_scalar("pixel accuracy/val", val_loss, epoch)
 
-        # Model selection
-        if val_Iou.item() > max_val_mIoU:
-            max_val_mIoU = val_Iou.item()
+            # Model selection
+            if val_Iou.item() > max_val_mIoU:
+                max_val_mIoU = val_Iou.item()
 
-            filename = os.path.join(sv_path, f'best.pth')
-            if args.save_models:
-                log('=> Max_mIoU = {:.3f}, Saving checkpoint to: {}'.format(max_val_mIoU, filename))
-                torch.save({'epoch': epoch, 'state_dict': model.state_dict(),
-                            'optimizer': optimizer.state_dict()}, filename)
+                filename = os.path.join(sv_path, f'best.pth')
+                if args.save_models:
+                    log('=> Max_mIoU = {:.3f}, Saving checkpoint to: {}'.format(max_val_mIoU, filename))
+                    torch.save({'epoch': epoch, 'state_dict': model.state_dict(),
+                                'optimizer': optimizer.state_dict()}, filename)
 
     if args.save_models:  # 所有跑完，存last epoch
         filename = os.path.join(sv_path, 'final.pth')
         torch.save( {'epoch': args.epochs, 'state_dict': model.state_dict(),
                      'optimizer': optimizer.state_dict()}, filename )
-
-
-def cross_entropy(logits: torch.tensor, one_hot: torch.tensor, targets: torch.tensor, mean_reduce: bool = True,
-                  ignore_index: int = 255) -> torch.tensor:
-    """
-    inputs: one_hot  : shape [batch_size, num_classes, h, w]
-            logits : shape [batch_size, num_classes, h, w]
-            targets : shape [batch_size, h, w]
-    returns:loss: shape [batch_size] or [] depending on mean_reduce
-    """
-    assert logits.size() == one_hot.size()
-    log_prb = F.log_softmax(logits, dim=1)
-    non_pad_mask = targets.ne(ignore_index)
-    loss = -(one_hot * log_prb).sum(dim=1)
-    loss = loss.masked_select(non_pad_mask)
-    if mean_reduce:
-        return loss.mean()  # average later
-    else:
-        return loss
-
-
-def compute_loss(args, model, images, targets, num_classes):
-    """
-    inputs:  images  : shape [batch_size, C, h, w]
-             logits : shape [batch_size, num_classes, h, w]
-             targets : shape [batch_size, h, w]
-    returns: loss: shape []
-             logits: shape [batch_size]
-    """
-    batch, h, w = targets.size()
-    one_hot_mask = torch.zeros(batch, num_classes, h, w).cuda()
-    new_target = targets.clone().unsqueeze(1)
-    new_target[new_target == 255] = 0
-
-    one_hot_mask.scatter_(1, new_target, 1).long()
-    if args.smoothing:
-        eps = 0.1
-        one_hot = one_hot_mask * (1 - eps) + (1 - one_hot_mask) * eps / (num_classes - 1)
-    else:
-        one_hot = one_hot_mask  # [batch_size, num_classes, h, w]
-
-    if args.mixup:
-        alpha = 0.2
-        lam = np.random.beta(alpha, alpha)
-        rand_index = torch.randperm(images.size()[0]).cuda()
-        one_hot_a = one_hot
-        targets_a = targets
-
-        one_hot_b = one_hot[rand_index]
-        target_b = targets[rand_index]
-        mixed_images = lam * images + (1 - lam) * images[rand_index]
-
-        logits = model(mixed_images)
-        loss = cross_entropy(logits, one_hot_a, targets_a) * lam  \
-            + cross_entropy(logits, one_hot_b, target_b) * (1. - lam)
-    else:
-        logits = model(images)
-        loss = cross_entropy(logits, one_hot, targets)
-    return loss
 
 
 def standard_validate(args, val_loader, model, use_callback):

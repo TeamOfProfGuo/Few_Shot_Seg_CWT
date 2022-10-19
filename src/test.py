@@ -13,7 +13,7 @@ import torch.optim as optim
 from collections import defaultdict
 from .dataset.dataset import get_val_loader
 from .util import AverageMeter, batch_intersectionAndUnionGPU, get_model_dir_trans
-from src.model.nets.pspnet import get_model, get_classifier
+from src.model import get_model, CosCls
 from src.model.base.transformer import MultiHeadAttentionOne
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, log
 import argparse
@@ -301,7 +301,7 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
                     f_s, _ = model.extract_features(spprt_imgs.squeeze(0))
 
                 # ====== Phase 1: Train a new binary classifier on support samples. ======
-                binary_classifier = get_classifier(args, num_classes=2).cuda()
+                binary_classifier = CosCls(in_dim = args.bottleneck_dim, n_classes=2, cls_type=args.cls_type).cuda()
                 optimizer = optim.SGD(binary_classifier.parameters(), lr=args.cls_lr)
 
                 # Dynamic class weights
@@ -332,7 +332,7 @@ def episodic_validate(args: argparse.Namespace, val_loader: torch.utils.data.Dat
 
             # ================== metrics ==================
             logits = F.interpolate(logits_q.squeeze(1), size=(H, W), mode='bilinear', align_corners=True).detach()
-            intersection, union, _ = batch_intersectionAndUnionGPU(logits.unsqueeze(1), gt_q, 2)
+            intersection, union, _ = batch_intersectionAndUnionGPU(logits.unsqueeze(1), gt_q, 2)  # [BS, shot1, num_cls2]
             intersection, union = intersection.cpu(), union.cpu()
 
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)

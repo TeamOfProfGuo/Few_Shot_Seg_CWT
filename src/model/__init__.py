@@ -5,3 +5,5 @@ from .model_util import get_corr, get_ig_mask, att_weighted_out, SegLoss, Adapt_
 from src.model.base.match import MatchNet, CHMLearner
 from src.model.base.detr import DeTr
 from .mmn import MMN
+from src.model.nets import get_model
+from src.model.nets.modules import CosCls
