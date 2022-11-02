@@ -1,7 +1,7 @@
 # encoding:utf-8
 
 # This code is to pretrain model backbone on the base train data
-
+#import pdb
 import os
 import yaml
 import random
@@ -40,8 +40,8 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'pretrain_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
+    sv_path = 'pretrain_{}'.format(args.train_name) + ('_contrast' if args.contrast else '_no') + \
+          '/{}{}/split{}_shot{}/{}'.format(args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
     set_log_path(path=sv_path)
@@ -122,7 +122,7 @@ def main(args: argparse.Namespace) -> None:
 
             if i % args.log_freq == 0:
                 model.eval()
-                logits = model(images)
+                logits, _ = model(images)
                 intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)  # gt [B, 473, 473]
 
                 allAcc = (intersection.sum() / (target.sum() + 1e-10))  # scalar

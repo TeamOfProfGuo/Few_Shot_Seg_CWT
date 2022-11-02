@@ -95,7 +95,7 @@ class PSPNet(nn.Module):
         if self.contrast:
             return x, self.proj_head(fea_lst[4][-1])
         else:
-            return x
+            return x, None
 
     def extract_features(self, x):
         x_4, feat_lst = self.get_feat_list(x)    # feat_lst 其实是 dict

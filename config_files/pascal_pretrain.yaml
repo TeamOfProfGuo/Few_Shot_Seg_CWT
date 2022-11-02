@@ -74,7 +74,7 @@ DISTRIBUTED:
   gpus: [0]
 
 CONTRAST:
-  contrast: True
+  contrast: False
   temperature: 0.1
   base_temperature: 0.07
   max_samples: 1024
