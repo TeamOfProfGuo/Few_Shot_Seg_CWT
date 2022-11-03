@@ -242,7 +242,7 @@ class RandScale(object):
 
 
 class Crop(object):
-    """Crops the given ndarray image (H*W*C or H*W).
+    """Crops the given ndarray image (H*W*C or H*W). if image is smaller than crop size, then pad the image to crop size
     Args:
         size (sequence or int): Desired output size of the crop. If size is an
         int instead of sequence like (h, w), a square crop (size, size) is made.
@@ -284,7 +284,7 @@ class Crop(object):
         pad_w = max(self.crop_w - w, 0)
         pad_h_half = int(pad_h / 2)
         pad_w_half = int(pad_w / 2)
-        if pad_h > 0 or pad_w > 0:
+        if pad_h > 0 or pad_w > 0:  # if image is smaller than crop size, pad the image to crop size
             if self.padding is None:
                 raise (RuntimeError("segtransform.Crop() need padding while padding argument is None\n"))
             image = cv2.copyMakeBorder(image, pad_h_half, pad_h - pad_h_half, pad_w_half,

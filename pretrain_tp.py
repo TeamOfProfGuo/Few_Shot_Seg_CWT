@@ -41,7 +41,7 @@ args = cfg
 print(args)
 
 args.cls_type = 'ooooo'
-args.contrast = True
+args.contrast = False
 
 # ====================================  main ================================================
 random.seed(args.manual_seed)
@@ -51,7 +51,10 @@ torch.manual_seed(args.manual_seed)
 # ====== Model + Optimizer ======
 model = get_model(args)
 modules_ori = [model.layer0, model.layer1, model.layer2, model.layer3, model.layer4]
-modules_new = [model.ppm, model.bottleneck, model.classifier, model.proj_head]
+modules_new = [model.ppm, model.bottleneck, model.classifier]
+if args.contrast:
+    modules_new.append(model.proj_head)
+
 
 params_list = []
 for module in modules_ori:
@@ -87,3 +90,6 @@ logits, embedding = model(images)
 
 
 loss = criterion(logits=logits, target=gt.long(), embedding=embedding, with_embed=True)
+
+sv_path = 'pretrain_{}'.format(args.train_name) + ('_contrast' if args.contrast else '_no') + \
+          '/{}{}/split{}_shot{}/{}'.format(args.arch, args.layers, args.train_split, args.shot, args.exp_name)

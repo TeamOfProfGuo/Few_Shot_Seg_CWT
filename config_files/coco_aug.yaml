@@ -21,9 +21,9 @@ DATA:
 
   padding: avg   # avg or other
   augmentations: ['resize']
-  meta_aug: 1  # default is 1/can not be 0
-  aug_th: [0.2, 0.2]
-  aug_type: 0
+  meta_aug: 2  # default is 1/can not be 0
+  aug_th: [0.15, 0.15]
+  aug_type: 1
   wt_file: 0
   att_type: 2 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
 
@@ -93,7 +93,7 @@ EVALUATION:
   n_runs: 1
 
 Experiment:
-  exp_name: dot0_noaug_att3
+  exp_name: aug1_wt3
 
 DISTRIBUTED:
   gpus: [0]

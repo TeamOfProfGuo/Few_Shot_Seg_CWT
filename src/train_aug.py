@@ -55,7 +55,9 @@ def main(args: argparse.Namespace) -> None:
     model = get_model(args).cuda()
 
     if args.resume_weights:
-        if args.get('wt_file', 0) == 1:
+        if args.get('ckpt_path', False):
+            fname = args.ckpt_path + 'split{}_shot{}/pretrain_dot/best.pth'.format(args.train_split, args.shot)
+        elif args.get('wt_file', 0) == 1:
             fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best1.pth'.format(args.train_split, args.arch, args.layers)
         else:
             fname = args.resume_weights + args.train_name + '/' + 'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)

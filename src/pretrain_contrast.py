@@ -64,6 +64,8 @@ def main(args: argparse.Namespace) -> None:
     model = get_model(args).cuda()
     modules_ori = [model.layer0, model.layer1, model.layer2, model.layer3, model.layer4]
     modules_new = [model.ppm, model.bottleneck, model.classifier]
+    if args.contrast:
+        modules_new.append(model.proj_head)
 
     params_list = []
     for module in modules_ori:

@@ -297,7 +297,7 @@ class EpisodicData(Dataset):
                 if self.meta_aug>1:
                     org_img, org_label = self.transform(support_image_list[k], support_label_list[k])  # flip and resize
                     label_freq = np.bincount(support_label_list[k].flatten())
-                    fg_ratio = label_freq[1] / np.sum(label_freq)
+                    fg_ratio = label_freq[1] / label_freq[0]  # np.sum(label_freq)
 
                     if self.aug_type == 0:
                         new_img, new_label = self.get_aug_data0(fg_ratio, support_image_list[k], support_label_list[k])
@@ -334,25 +334,25 @@ class EpisodicData(Dataset):
         elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
             meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
         else:
-            scale = 473 / max(support_label.shape) * 0.8
-            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
+            scale = 473 / max(support_label.shape) * 0.7
+            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.05), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
         new_img, new_label = meta_trans(support_image, support_label)
         return new_img.unsqueeze(0), new_label.unsqueeze(0)
 
-    def get_aug_data10(self, fg_ratio, support_image, support_label):   # only size augmentation, no color augmentation
+    def get_aug_data1(self, fg_ratio, support_image, support_label):   # only size augmentation, no color augmentation
         if fg_ratio <= self.aug_th[0] or fg_ratio >= self.aug_th[1]:
             if fg_ratio <= self.aug_th[0]:
                 k = 2 if fg_ratio <= 0.03 else 3  # whether to crop at 1/2 or 1/3
                 meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
             else:
-                scale = 473 / max(support_label.shape) * 0.7
-                meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
+                scale = 473 / max(support_label.shape) * (0.7 if fg_ratio > 0.3 else 0.8)
+                meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.05), fixed_size=473, padding=self.padding)] +  self.transform.segtransform[-2:])
             new_img, new_label = meta_trans(support_image, support_label)
             return new_img.unsqueeze(0), new_label.unsqueeze(0)
         else:
             return None, None
 
-    def get_aug_data1(self, fg_ratio, support_image, support_label):  # create two augmented data
+    def get_aug_data2(self, fg_ratio, support_image, support_label):  # create two augmented data
         scale = 473 / max(support_label.shape)
 
         if fg_ratio <= self.aug_th[0]:  # 0.15
@@ -371,34 +371,12 @@ class EpisodicData(Dataset):
         new_labels = torch.cat([new_label1.unsqueeze(0), new_label2.unsqueeze(0)], dim=0)
         return new_imgs, new_labels
 
-    def get_aug_data2(self, fg_ratio, support_image, support_label):   # 最初的 data augmentation
-        if fg_ratio <= 0.15:
-            k = 2 if fg_ratio <= 0.05 else 3
-            meta_trans = transform.Compose([transform.FitCrop(k=k)] + self.transform.segtransform[-3:])
-        else:
-            meta_trans = transform.Compose([transform.RandomHorizontalFlip(p=1.0)] + self.transform.segtransform[-3:])
-        new_img, new_label = meta_trans(support_image, support_label)
-        return new_img.unsqueeze(0), new_label.unsqueeze(0)
+    def get_aug_data4(self, fg_ratio, support_image, support_label):    # random augmentation, random resized crop
 
-    def get_aug_data3(self, fg_ratio, support_image, support_label):    # base data augmentation: resize (with padding)
-        if fg_ratio <= self.aug_th[0]:
-            k = 2 if fg_ratio <= 0.03 else 3  # whether to crop at 1/2 or 1/3
-            trans_crop = transform.FitCrop(k=k, multi=True)
-            crop_out = trans_crop(support_image, support_label)
-            meta_trans = transform.Compose(self.transform.segtransform[-3:])
-
-            new_img, new_label = meta_trans(crop_out[0], crop_out[1])
-            if len(crop_out) == 2:
-                return new_img.unsqueeze(0), new_label.unsqueeze(0)
-            elif len(crop_out) == 4:
-                new_img2, new_label2 = meta_trans(crop_out[2], crop_out[3])
-                return torch.cat([new_img.unsqueeze(0), new_img2.unsqueeze(0)], dim=0), torch.cat([new_label.unsqueeze(0), new_label2.unsqueeze(0)], dim=0)
-
-        elif self.aug_th[0] < fg_ratio < self.aug_th[1]:
-            meta_trans = transform.Compose([transform.ColorJitter(cj_type='b')] + self.transform.segtransform[-3:])
-        else:
-            scale = 473 / max(support_label.shape) * 0.7
-            meta_trans = transform.Compose([transform.RandScale(scale=(scale, scale + 0.1), fixed_size=473, padding=self.padding)] + self.transform.segtransform[-2:])
+        scale = 473 / max(support_label.shape)
+        meta_trans = transform.Compose([transform.RandScale(scale=(scale * 0.5, scale * 2)),
+                                        transform.Crop(size=473, crop_type='center', padding=self.padding) # no more need for resize to 473
+                                        ] + self.transform.segtransform[-2:])
         new_img, new_label = meta_trans(support_image, support_label)
         return new_img.unsqueeze(0), new_label.unsqueeze(0)
 

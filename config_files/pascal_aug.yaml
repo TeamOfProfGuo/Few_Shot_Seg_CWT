@@ -21,14 +21,15 @@ DATA:
 
   padding: avg   # avg or other
   augmentations: ['resize']
-  meta_aug: 1  # default is 1/can not be 0
-  aug_th: [0.12, 0.25]    # [0.15, 0.30] th0   [0.20, 0.35]
-  aug_type: 0
+  meta_aug: 2  # default is 1/can not be 0
+  aug_th: [0.15, 0.15]    # [0.15, 0.30] th0   [0.20, 0.35]
+  aug_type: 1
   wt_file: 1
   att_type: 3 # 0, (original img) 1 (new img), 2 (both), 3(adaptive)
 
 TRAIN:
-  ckpt_path: checkpoints/
+  ckpt_path: results/pretrain_pascal_no/resnet50/
+  # store pretrained backbone
   batch_size: 1
   epochs: 8
   log_freq : 50
@@ -97,7 +98,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dot1_wt3_noaug_save
+  exp_name: pre2_aug1_wt3
 
 DISTRIBUTED:
   gpus: [0]
