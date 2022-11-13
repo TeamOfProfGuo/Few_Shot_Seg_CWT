@@ -18,16 +18,23 @@ DATA:
   scale_max: 2.0
   rot_min: -10
   rot_max: 10
-  augmentations: ['hor_flip', 'vert_flip', 'resize']
+
+  padding: avg
+  augmentations: ['resize']
+  meta_aug: 1 # 1 means no augmentation
+  aug_th: [0.15, 0.30]
+  aug_type: 1
+  wt_file: 1
+
 
 TRAIN:
   ckpt_path: checkpoints/
   batch_size: 1      # meta_train batch size
   epochs: 20
   log_freq : 50
-  debug: False
+  debug: True
   save_models: True
-  cls_lr: 0.0025
+  cls_lr: 0.05
   trans_lr: 0.0025
   scale_lr: 1.0
   mixup: False
@@ -54,6 +61,9 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
+Classifier:
+  cls_type: ooooo
+
 EVALUATION:
   shot: 1
   random_shot: False
@@ -66,7 +76,6 @@ EVALUATION:
   FB_param_noise: 0
   smoothing: True
   n_runs: 1
-  save_oracle: False
 
 DISTRIBUTED:
   gpus: [0]

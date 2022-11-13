@@ -1,3 +1,5 @@
+model_ckpt
+*.zip
 utils/__pychache__/
 *.jpg
 src/.idea/
