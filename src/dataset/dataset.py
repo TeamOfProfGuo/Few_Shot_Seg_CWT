@@ -305,8 +305,8 @@ class EpisodicData(Dataset):
                         new_img, new_label = self.get_aug_data1(fg_ratio, support_image_list[k], support_label_list[k])
                     elif self.aug_type == 3:
                         new_img, new_label = self.get_aug_data3(fg_ratio, support_image_list[k], support_label_list[k])
-                    elif self.aug_type == 10:
-                        new_img, new_label = self.get_aug_data10(fg_ratio, support_image_list[k], support_label_list[k])
+                    elif self.aug_type == 4:
+                        new_img, new_label = self.get_aug_data4(fg_ratio, support_image_list[k], support_label_list[k])
 
                     if new_img is not None:
                         support_image_list[k] = torch.cat([org_img.unsqueeze(0), new_img], dim=0)

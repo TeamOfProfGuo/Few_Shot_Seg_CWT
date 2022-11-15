@@ -103,7 +103,7 @@ class PSPNet(nn.Module):
         x = self.ppm(x_4)
         x = self.bottleneck(x)
 
-        if ('l' in self.rmid or 'mid' in self.rmid) or self.contrast:
+        if (self.rmid is not None and ('l' in self.rmid or 'mid' in self.rmid)) or self.contrast:
             return x, feat_lst
         else:
             return x, []

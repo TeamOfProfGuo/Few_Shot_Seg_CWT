@@ -22,7 +22,7 @@ DATA:
 
 TRAIN:
   ckpt_path: checkpoints/
-  batch_size: 10
+  batch_size: 8
   epochs: 100
   log_freq : 50
   save_models: True
@@ -57,7 +57,7 @@ EVALUATION:
   batch_size_val: 200
   manual_seed: 42
   ckpt_used: best
-  test_num: 1000
+  test_num: 2000
   FB_param_noise: 0
   smoothing: True
   n_runs: 2

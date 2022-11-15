@@ -299,4 +299,6 @@ if __name__ == "__main__":
         args.n_runs = 2
         args.save_models = False
 
+    world_size = len(args.gpus)
+    args.distributed = (world_size > 1)
     main(args)
