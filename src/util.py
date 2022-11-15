@@ -164,7 +164,7 @@ def get_model_dir(args: argparse.Namespace) -> str:
     return path
 
 
-def get_model_dir_trans(args: argparse.Namespace) -> str:
+def get_model_dir_trans(args: argparse.Namespace) -> str:  # model_ckpt/coco/split=0/model/shot_1/transformer_resnet50
     """
     Obtain the directory to save/load the model
     """
