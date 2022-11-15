@@ -182,7 +182,7 @@ def do_epoch(
 
     iterable_train_loader = iter(train_loader)
 
-    model.train()
+    model.eval()
     transformer.train()
 
     for i in range(iter_per_epoch):

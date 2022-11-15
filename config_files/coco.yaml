@@ -21,7 +21,7 @@ DATA:
 
   padding: avg
   augmentations: ['resize']
-  meta_aug: 2 # 1 means no augmentation
+  meta_aug: 1 # 1 means no augmentation
   aug_th: [0.15, 0.30]
   aug_type: 1
   wt_file: 1
