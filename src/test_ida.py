@@ -46,10 +46,10 @@ def main_worker(args: argparse.Namespace) -> None:
         random.seed(args.manual_seed)
 
     # ====== Model  ======
-    model = get_model(args)
+    model = get_model(args).cuda()
 
     trans_dim = args.bottleneck_dim
-    transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5)
+    transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5).cuda()
     
     root_trans = get_model_dir_trans(args)   # root for transformer
 
@@ -65,7 +65,7 @@ def main_worker(args: argparse.Namespace) -> None:
                                                                                                          args.layers)
         if os.path.isfile(fname):
             print("=> loading weight '{}'".format(fname))
-            pre_weight = torch.load(args.resume_weights)['state_dict']
+            pre_weight = torch.load(fname)['state_dict']
             model_dict = model.state_dict()
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
@@ -75,9 +75,9 @@ def main_worker(args: argparse.Namespace) -> None:
                         print('Mismatched shape {}: {}, {}'.format(key, pre_weight[key].shape, model_dict[key].shape))
 
             model.load_state_dict(model_dict, strict=True)
-            print("=> loaded weight '{}'".format(args.resume_weights))
+            print("=> loaded weight '{}'".format(fname))
         else:
-            print("=> no weight found at '{}'".format(args.resume_weights))
+            print("=> no weight found at '{}'".format(fname))
 
     if args.ckpt_used is not None:
         filepath = os.path.join(root_trans, f'{args.ckpt_used}.pth')
@@ -167,6 +167,7 @@ def validate_transformer(args: argparse.Namespace,
                     q_label = q_label.cuda()
                     qry_img = qry_img.cuda()
 
+                spprt_imgs, s_label = spprt_imgs.squeeze(0), s_label.squeeze(0)  # [2, 3, 473, 473], [2, 473, 473]
                 # ====== Phase 1: Train a new binary classifier on support samples. ======
 
                 def finetune_cls(spt_imgs, spt_labels, model):
@@ -184,19 +185,19 @@ def validate_transformer(args: argparse.Namespace,
                         ignore_index=255)
 
                     with torch.no_grad():
-                        f_s, _ = model.extract_features(spt_imgs.squeeze(0))  # [n_task, n_shots, c, h, w]
+                        f_s, _ = model.extract_features(spt_imgs)  # [n_shots, c, h, w]
 
                     for index in range(args.adapt_iter):
                         output_support = binary_classifier(f_s)
-                        output_support = F.interpolate(output_support, size=s_label.size()[2:], mode='bilinear', align_corners=True)
-                        s_loss = criterion(output_support, s_label.squeeze(0))
+                        output_support = F.interpolate(output_support, size=spt_labels.size()[-2:], mode='bilinear', align_corners=True)
+                        s_loss = criterion(output_support, spt_labels)
                         optimizer.zero_grad()
                         s_loss.backward()
                         optimizer.step()
 
                     return binary_classifier
 
-                binary_classifier0 = finetune_cls(spprt_imgs[:, 0:1], s_label[:, 0:1], model)  # only using ori image
+                binary_classifier0 = finetune_cls(spprt_imgs[0:1], s_label[0:1], model)  # only using ori image
                 binary_classifier1 = finetune_cls(spprt_imgs, s_label, model)
 
                 # ====== Phase 2: Update classifier's weights with old weights and query features. ======
@@ -211,6 +212,7 @@ def validate_transformer(args: argparse.Namespace,
                         f_q = F.normalize(f_q, dim=1)
                         weights_cls = binary_classifier.weight.data  # [2, c, 1, 1]
                         weights_cls_reshape = weights_cls.squeeze().unsqueeze(0).expand(f_q.shape[0], 2, 512)  # [1, 2, c]
+                        # print('=====>weight cls {}, f_q {}, transformer {}'.format(weights_cls.device, f_q.device, next(transformer.parameters()).device))
                         updated_weights_cls = transformer(weights_cls_reshape, f_q, f_q)  # [1, 2, c]
 
                         # Build a temporary new classifier for prediction

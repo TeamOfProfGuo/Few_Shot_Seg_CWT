@@ -46,7 +46,7 @@ def main_worker(args: argparse.Namespace) -> None:
         random.seed(args.manual_seed)
 
     # ====== Model  ======
-    model = get_model(args)
+    model = get_model(args).cuda()
 
     trans_dim = args.bottleneck_dim
     transformer = MultiHeadAttentionOne(args.heads, trans_dim, trans_dim, trans_dim, dropout=0.5)
