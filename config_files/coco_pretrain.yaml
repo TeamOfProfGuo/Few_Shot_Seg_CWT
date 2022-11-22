@@ -47,6 +47,7 @@ MODEL:
   m_scale: False
   layers: 50
   bottleneck_dim: 512
+  rmid: mid
 
 
 EVALUATION:
@@ -62,13 +63,22 @@ EVALUATION:
   smoothing: True
   n_runs: 2
 
-Classifier:
+CLASSIFIER:
   dist: dot
-  cls_type: oooo
+  cls_type: ooooo
   adapt_iter: 200
 
-Experiment:
+EXPERIMENT:
   exp_name: pretrain_dot
 
 DISTRIBUTED:
   gpus: [0]
+
+CONTRAST:
+  contrast: True
+  temperature: 0.1
+  base_temperature: 0.07
+  max_samples: 1024
+  max_views: 100
+  loss_weight: 0.1
+  bg_anchor: False
